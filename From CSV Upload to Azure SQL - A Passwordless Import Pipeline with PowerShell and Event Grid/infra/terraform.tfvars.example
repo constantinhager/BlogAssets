@@ -1,0 +1,9 @@
+subscription_id      = "00000000-0000-0000-0000-000000000000"
+location             = "germanywestcentral"
+prefix               = "blob2sql"
+sql_admin_login_name = "sg-blob-to-sql-sql-admins"
+client_ip_address    = "203.0.113.10"
+sql_admin_object_id  = "00000000-0000-0000-0000-000000000000"
+
+# Step 1: false. Step 4 (after code deploy): true
+enable_event_subscription = false

@@ -1,0 +1,6 @@
+# Local runs: terraform init -backend-config=backend.hcl
+# Values are printed by scripts/New-GitHubDeploymentIdentity.ps1
+resource_group_name  = "rg-tfstate"
+storage_account_name = "sttfstatexxxxx"
+container_name       = "tfstate"
+key                  = "blob-to-sql.prod.tfstate"

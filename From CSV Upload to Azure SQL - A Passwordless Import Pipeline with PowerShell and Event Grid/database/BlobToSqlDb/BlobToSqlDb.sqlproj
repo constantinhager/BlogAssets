@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build">
+  <Sdk Name="Microsoft.Build.Sql" Version="2.3.0" />
+  <PropertyGroup>
+    <Name>BlobToSqlDb</Name>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider</DSP>
+    <ModelCollation>1033, CI</ModelCollation>
+    <ProjectGuid>{A104D8FD-468A-4D16-B1D2-667B9270742F}</ProjectGuid>
+    <!-- Static code analysis on build (results as warnings) -->
+    <RunSqlCodeAnalysis>True</RunSqlCodeAnalysis>
+  </PropertyGroup>
+
+  <!-- Supplied at deployment: sqlpackage /v:IdentityName=... /v:IdentityClientId=... -->
+  <ItemGroup>
+    <SqlCmdVariable Include="IdentityName">
+      <DefaultValue></DefaultValue>
+      <Value>$(SqlCmdVar__1)</Value>
+    </SqlCmdVariable>
+    <SqlCmdVariable Include="IdentityClientId">
+      <DefaultValue></DefaultValue>
+      <Value>$(SqlCmdVar__2)</Value>
+    </SqlCmdVariable>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PostDeploy Include="Scripts\PostDeployment.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="BlobToSqlDb.publish.xml" />
+  </ItemGroup>
+</Project>
