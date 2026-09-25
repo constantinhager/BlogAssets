@@ -30,14 +30,24 @@ IF NOT EXISTS (
     JOIN sys.database_principals AS m ON m.principal_id = rm.member_principal_id
     WHERE r.[name] = N'app_importer' AND m.[name] = N'$(IdentityName)')
 BEGIN
-    ALTER ROLE [app_importer] ADD MEMBER [$(IdentityName)];
+    -- Dynamic SQL: the build's syntax check substitutes the empty default value, and [] is not a valid identifier.
+    DECLARE @cmd NVARCHAR (MAX) = N'ALTER ROLE [app_importer] ADD MEMBER ' + QUOTENAME(N'$(IdentityName)') + N';';
+    EXEC (@cmd);
     PRINT N'Added $(IdentityName) to app_importer.';
 END;
 GO
 
 -- Earlier versions of this project used db_datareader/db_datawriter. Remove those memberships.
 IF IS_ROLEMEMBER(N'db_datawriter', N'$(IdentityName)') = 1
-    ALTER ROLE [db_datawriter] DROP MEMBER [$(IdentityName)];
+BEGIN
+    DECLARE @cmd NVARCHAR (MAX) = N'ALTER ROLE [db_datawriter] DROP MEMBER ' + QUOTENAME(N'$(IdentityName)') + N';';
+    EXEC (@cmd);
+END;
+GO
+
 IF IS_ROLEMEMBER(N'db_datareader', N'$(IdentityName)') = 1
-    ALTER ROLE [db_datareader] DROP MEMBER [$(IdentityName)];
+BEGIN
+    DECLARE @cmd NVARCHAR (MAX) = N'ALTER ROLE [db_datareader] DROP MEMBER ' + QUOTENAME(N'$(IdentityName)') + N';';
+    EXEC (@cmd);
+END;
 GO
