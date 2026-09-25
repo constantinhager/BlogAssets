@@ -1,0 +1,284 @@
+name: "From CSV Upload to Azure SQL: deploy"
+
+# Blog post folder: "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid"
+# PR:          tests, function package + dacpac build, terraform plan, database change script (previews in the job summary)
+# main/manual: tests + builds, terraform apply, database publish (dacpac), function code, Event Grid subscription
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid/**"
+      - ".github/workflows/csv-upload-to-azure-sql.yml"
+  push:
+    branches: [main]
+    paths:
+      - "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid/**"
+      - ".github/workflows/csv-upload-to-azure-sql.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # OIDC token for azure/login and Terraform
+  contents: read
+
+env:
+  # Project folder inside the BlogAssets repository. `run` steps use it through defaults.run.working-directory;
+  # action inputs (`with: path:`) are relative to the repository root and need it explicitly.
+  POST_DIR: "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid"
+  # Terraform azurerm provider + backend: OIDC, no secrets
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: "true"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_sql_admin_login_name: ${{ vars.SQL_ADMIN_GROUP_NAME }}
+  TF_VAR_sql_admin_object_id: ${{ vars.SQL_ADMIN_GROUP_ID }}
+  TERRAFORM_VERSION: "1.16.4"
+  TF_VAR_FILE: env/prod.tfvars
+  FUNCTION_NAME: Import-CsvBlob
+  # Database project
+  DOTNET_VERSION: "10.0.x" # Microsoft.Build.Sql needs .NET 8+, SqlPackage runs on .NET 8/10
+  SQLPACKAGE_VERSION: "170.5.96"
+  SQL_PROJECT: database/BlobToSqlDb/BlobToSqlDb.sqlproj
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DACFX_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  test:
+    name: Test + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Parser tests
+        shell: pwsh
+        run: ./tests/Invoke-LocalTest.ps1
+
+      - name: Build function package (no publish)
+        shell: pwsh
+        run: ./build/build.ps1
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build database project (dacpac + code analysis)
+        run: dotnet build "$SQL_PROJECT" --configuration Release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dacpac
+          path: ${{ env.POST_DIR }}/database/BlobToSqlDb/bin/Release/BlobToSqlDb.dacpac
+          if-no-files-found: error
+
+  plan:
+    name: Terraform plan + DB preview
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid/infra"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: >
+          terraform init
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}"
+          -backend-config="key=${{ vars.TFSTATE_KEY }}"
+
+      - name: terraform fmt / validate
+        run: |
+          terraform fmt -check -recursive
+          terraform validate -no-color
+
+      - name: Is the function already deployed?
+        id: detect
+        run: ../scripts/ci/Test-FunctionDeployed.sh
+
+      - name: terraform plan
+        run: |
+          terraform plan -no-color -lock-timeout=5m \
+            -var-file="$TF_VAR_FILE" \
+            -var "enable_event_subscription=${{ steps.detect.outputs.deployed }}" \
+            -out tfplan
+          {
+            echo '### Terraform plan'
+            echo '```'
+            terraform show -no-color tfplan | tail -c 60000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Database preview: only when the SQL server already exists
+      - name: Read outputs
+        id: tf
+        run: ../scripts/ci/Get-TerraformOutputs.sh
+
+      - uses: actions/download-artifact@v8
+        if: steps.tf.outputs.exists == 'true'
+        with:
+          name: dacpac
+          path: ${{ runner.temp }}/dacpac
+
+      - uses: actions/setup-dotnet@v6
+        if: steps.tf.outputs.exists == 'true'
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install SqlPackage
+        if: steps.tf.outputs.exists == 'true'
+        run: |
+          dotnet tool install --global microsoft.sqlpackage --version "$SQLPACKAGE_VERSION"
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Open SQL firewall for this runner
+        id: fw
+        if: steps.tf.outputs.exists == 'true'
+        run: ../scripts/ci/Set-SqlFirewallRule.sh open "${{ steps.tf.outputs.resource_group }}" "${{ steps.tf.outputs.sql_server_fqdn }}"
+
+      - name: Database change script (no changes applied)
+        if: steps.tf.outputs.exists == 'true'
+        shell: pwsh
+        run: |
+          $token = az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv
+          if ($LASTEXITCODE -ne 0) { throw 'az account get-access-token failed' }
+          Write-Host "::add-mask::$token"
+          $out = Join-Path $env:RUNNER_TEMP 'db-changes.sql'
+          ../scripts/Publish-Database.ps1 -Action Script -OutputPath $out `
+            -DacpacPath       "$env:RUNNER_TEMP/dacpac/BlobToSqlDb.dacpac" `
+            -SqlServerFqdn    '${{ steps.tf.outputs.sql_server_fqdn }}' `
+            -Database         '${{ steps.tf.outputs.sql_database }}' `
+            -IdentityName     '${{ steps.tf.outputs.sql_identity_name }}' `
+            -IdentityClientId '${{ steps.tf.outputs.sql_identity_client_id }}' `
+            -AccessToken      $token
+          $script = Get-Content -Raw $out
+          if ($script.Length -gt 60000) { $script = $script.Substring(0, 60000) + "`n-- (truncated)" }
+          "### Database changes (SqlPackage script)`n``````sql`n$script`n``````" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Close SQL firewall
+        if: always() && steps.fw.outcome == 'success'
+        run: ../scripts/ci/Set-SqlFirewallRule.sh close "${{ steps.tf.outputs.resource_group }}" "${{ steps.tf.outputs.sql_server_fqdn }}"
+
+  deploy:
+    name: Deploy
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: csv-upload-to-azure-sql # federated credential subject: ...:environment:csv-upload-to-azure-sql
+    concurrency:
+      group: deploy-csv-upload-to-azure-sql
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid/infra"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: >
+          terraform init
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}"
+          -backend-config="key=${{ vars.TFSTATE_KEY }}"
+
+      - name: Is the function already deployed?
+        id: detect
+        run: ../scripts/ci/Test-FunctionDeployed.sh
+
+      # First run: no Event Grid subscription yet (its webhook validation needs the deployed function).
+      # Later runs: keep it (true), so it is never removed and re-created.
+      - name: terraform apply (infrastructure)
+        run: |
+          terraform apply -auto-approve -no-color -lock-timeout=5m \
+            -var-file="$TF_VAR_FILE" \
+            -var "enable_event_subscription=${{ steps.detect.outputs.deployed }}"
+
+      - name: Read outputs
+        id: tf
+        run: ../scripts/ci/Get-TerraformOutputs.sh
+
+      # Database: schema from the dacpac built in the test job, then post-deployment (user + role)
+      - uses: actions/download-artifact@v8
+        with:
+          name: dacpac
+          path: ${{ runner.temp }}/dacpac
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install SqlPackage
+        run: |
+          dotnet tool install --global microsoft.sqlpackage --version "$SQLPACKAGE_VERSION"
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Open SQL firewall for this runner
+        id: fw
+        run: ../scripts/ci/Set-SqlFirewallRule.sh open "${{ steps.tf.outputs.resource_group }}" "${{ steps.tf.outputs.sql_server_fqdn }}"
+
+      - name: Publish database (dacpac)
+        shell: pwsh
+        run: |
+          $token = az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv
+          if ($LASTEXITCODE -ne 0) { throw 'az account get-access-token failed' }
+          Write-Host "::add-mask::$token"
+          ../scripts/Publish-Database.ps1 -Action Publish `
+            -DacpacPath       "$env:RUNNER_TEMP/dacpac/BlobToSqlDb.dacpac" `
+            -SqlServerFqdn    '${{ steps.tf.outputs.sql_server_fqdn }}' `
+            -Database         '${{ steps.tf.outputs.sql_database }}' `
+            -IdentityName     '${{ steps.tf.outputs.sql_identity_name }}' `
+            -IdentityClientId '${{ steps.tf.outputs.sql_identity_client_id }}' `
+            -AccessToken      $token
+
+      - name: Close SQL firewall
+        if: always() && steps.fw.outcome == 'success'
+        run: ../scripts/ci/Set-SqlFirewallRule.sh close "${{ steps.tf.outputs.resource_group }}" "${{ steps.tf.outputs.sql_server_fqdn }}"
+
+      - name: Build + publish function code
+        shell: pwsh
+        working-directory: "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid"
+        run: ./build/build.ps1 -AppRg '${{ steps.tf.outputs.resource_group }}' -AppName '${{ steps.tf.outputs.function_app_name }}'
+
+      - name: terraform apply (Event Grid subscription)
+        if: steps.detect.outputs.deployed != 'true'
+        run: |
+          # The webhook only answers the validation handshake once the host has loaded the function
+          for i in $(seq 1 20); do
+            if az functionapp function show -g "${{ steps.tf.outputs.resource_group }}" -n "${{ steps.tf.outputs.function_app_name }}" \
+                 --function-name "$FUNCTION_NAME" --only-show-errors > /dev/null 2>&1; then break; fi
+            echo "Waiting for $FUNCTION_NAME to be listed ($i/20)..."; sleep 15
+          done
+          terraform apply -auto-approve -no-color -lock-timeout=5m \
+            -var-file="$TF_VAR_FILE" \
+            -var "enable_event_subscription=true"
