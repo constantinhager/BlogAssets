@@ -358,11 +358,14 @@ if (-not (Get-AzResourceGroup -Name $StateResourceGroup -ErrorAction Ignore) -an
 }
 
 if (-not $StateStorageAccount) {
-    $StateStorageAccount = (Get-AzStorageAccount -ResourceGroupName $StateResourceGroup -ErrorAction Ignore |
+    # Resolve into a plain variable first: $StateStorageAccount keeps its
+    # ValidatePattern attribute, so assigning $null to it would throw.
+    $existingAccount = (Get-AzStorageAccount -ResourceGroupName $StateResourceGroup -ErrorAction Ignore |
         Where-Object StorageAccountName -Like 'sttfstate*' | Select-Object -First 1).StorageAccountName
-    if (-not $StateStorageAccount) {
-        $StateStorageAccount = 'sttfstate' + -join ((97..122) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
+    if (-not $existingAccount) {
+        $existingAccount = 'sttfstate' + -join ((97..122) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
     }
+    $StateStorageAccount = $existingAccount
 }
 
 $account = Get-AzStorageAccount -ResourceGroupName $StateResourceGroup -Name $StateStorageAccount -ErrorAction Ignore
@@ -433,4 +436,3 @@ if ($ConfigureGitHub) {
 Write-Step 'Summary'
 [PSCustomObject]$variables | Format-List | Out-String | Write-Host
 if (-not $ConfigureGitHub) { Write-Host 'Set these as GitHub repository variables (Settings > Secrets and variables > Actions > Variables), or re-run with -ConfigureGitHub.' }
-Write-Host "Local backend.hcl:`n  resource_group_name  = `"$StateResourceGroup`"`n  storage_account_name = `"$StateStorageAccount`"`n  container_name       = `"$StateContainer`"`n  key                  = `"$StateKey`""

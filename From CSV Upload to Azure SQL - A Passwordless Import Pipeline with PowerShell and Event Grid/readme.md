@@ -22,7 +22,7 @@ The project is scaffolded from the PSModuleDevelopment `AzureFunction` template 
 | `build/build.config.psd1` | `FlexConsumption = $true`, `BlobTrigger` section (path, connection, SQL output). |
 | `build/functionBlob/` | Wrapper `run.ps1` + `function.json` template for blob endpoints. |
 | `function/` | host.json, profile.ps1, requirements.psd1 (template defaults). |
-| `infra/` | Terraform (azurerm 5.x), `env/prod.tfvars` for CI, `backend.hcl.example` for local runs. |
+| `infra/` | Terraform (azurerm 5.x), `env/prod.tfvars` and `.terraform.lock.hcl` for the pipeline. |
 | `assets/` | Architecture diagram. |
 | `../.github/workflows/csv-upload-to-azure-sql.yml` | GitHub Actions in the BlogAssets root: plan on PR, deploy on `main`. |
 | `database/BlobToSqlDb/` | SQL database project (Microsoft.Build.Sql): table, role, grants, post-deployment script. Builds to a `.dacpac`. |
@@ -85,7 +85,7 @@ It creates or reuses:
 
 The script is idempotent. Run it again to fill in anything missing.
 
-Then commit `.terraform.lock.hcl`. Run `terraform init -backend-config=backend.hcl` once locally to create it.
+Terraform runs only in the pipeline. The backend settings come from the `TFSTATE_*` variables, so there is no local `backend.hcl`. `infra/.terraform.lock.hcl` pins the provider versions. To update them, run `terraform providers lock -platform=linux_amd64 -platform=windows_amd64` in `infra/` and commit the result. That command only downloads provider checksums. It doesn't touch Azure or the state.
 
 ### Why a user-assigned identity for SQL
 
@@ -97,39 +97,17 @@ The pipeline runs as a service principal. If a service principal runs `CREATE US
 - **The subscription-level Contributor role** exists because Terraform creates the resource group. To narrow it, pre-create the resource group and scope the roles to it.
 - **Terraform state contains the blob extension key.** The state storage account allows Entra ID auth only.
 
-## Deploy manually
-
-Prereqs: PowerShell 7, Terraform ≥ 1.9, Azure CLI, the .NET 8+ SDK, SqlPackage (`dotnet tool install -g microsoft.sqlpackage`) and `Az.Accounts`. Run `New-GitHubDeploymentIdentity.ps1` first (without `-ConfigureGitHub`, if you don't use GitHub). It creates the state storage and the SQL admin group.
+## Test
 
 ```powershell
-# 0. Local test (no Azure needed)
+# Local test (no Azure needed)
 ./tests/Invoke-LocalTest.ps1
 
-# 1. Infrastructure (no Event Grid subscription yet)
-cd infra
-Copy-Item backend.hcl.example backend.hcl                # values from the setup script
-Copy-Item terraform.tfvars.example terraform.tfvars      # fill it in (SQL admin group, your IP)
-terraform init -backend-config=backend.hcl
-terraform apply
-
-# 2. Database schema (builds the dacpac, then publishes it)
-#    Needs the .NET 8+ SDK and: dotnet tool install -g microsoft.sqlpackage
-../scripts/Publish-Database.ps1 `
-  -SqlServerFqdn    (terraform output -raw sql_server_fqdn) `
-  -Database         (terraform output -raw sql_database) `
-  -IdentityName     (terraform output -raw sql_identity_name) `
-  -IdentityClientId (terraform output -raw sql_identity_client_id)
-
-# 3. Build + publish (template build script; uses az CLI because FlexConsumption = $true)
-../build/build.ps1 -AppRg (terraform output -raw resource_group) -AppName (terraform output -raw function_app_name)
-
-# 4. Event Grid subscription (the webhook must exist to pass validation)
-terraform apply -var enable_event_subscription=true
-
-# 5. Test
+# After a deployment: upload a sample file to the data storage account
+# (Terraform output data_storage_account, in the resource group the pipeline created)
 az storage blob upload --auth-mode login `
-  --account-name (terraform output -raw data_storage_account) `
-  -c incoming -f ../tests/sample-semicolon.csv -n sample.csv
+  --account-name <data storage account> `
+  -c incoming -f ./tests/sample-semicolon.csv -n sample.csv
 ```
 
 ## Database project

@@ -1,7 +1,7 @@
 terraform {
   required_version = ">= 1.9"
 
-  # Partial configuration. Values come from -backend-config (CI) or backend.hcl (local).
+  # Partial configuration. The GitHub workflow passes the values with -backend-config.
   backend "azurerm" {
     use_azuread_auth = true
   }
