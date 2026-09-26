@@ -22,11 +22,11 @@ The project is scaffolded from the PSModuleDevelopment `AzureFunction` template 
 | `build/build.config.psd1` | `FlexConsumption = $true`, `BlobTrigger` section (path, connection, SQL output). |
 | `build/functionBlob/` | Wrapper `run.ps1` + `function.json` template for blob endpoints. |
 | `function/` | host.json, profile.ps1, requirements.psd1 (template defaults). |
-| `infra/` | Terraform (azurerm 5.x), `env/prod.tfvars` and `.terraform.lock.hcl` for the pipeline. |
+| `infra/` | Terraform (azurerm 5.x). All settings are variable defaults in `variables.tf`; the pipeline passes only the subscription and SQL admin group. `.terraform.lock.hcl` pins the providers. |
 | `assets/` | Architecture diagram. |
 | `../.github/workflows/csv-upload-to-azure-sql.yml` | GitHub Actions in the BlogAssets root: plan on PR, deploy on `main`. |
 | `database/BlobToSqlDb/` | SQL database project (Microsoft.Build.Sql): table, role, grants, post-deployment script. Builds to a `.dacpac`. |
-| `scripts/` | Database publish, one-time GitHub/Azure setup, CI helpers. |
+| `scripts/` | Database publish, one-time GitHub/Azure setup and clean-up, CI helpers. |
 | `tests/` | Sample CSVs and a local test runner. |
 
 ## CSV format
@@ -119,6 +119,30 @@ $upload = @(
     '--name', 'sample.csv'
 )
 az storage blob upload @upload
+```
+
+## Clean up
+
+`scripts/Remove-BlobToSqlDeployment.ps1` removes everything this project created:
+
+- the Terraform resource group (`rg-blob2sql-*`, tag `workload = blob-to-sql`) and everything in it
+- the Terraform state resource group `rg-tfstate`, with the storage account and every state file in it
+- the service principal's role assignments
+- the SQL admin group
+- the app registration
+- the GitHub environment and **all** repository variables, including ones other workflows set
+
+Resource provider registrations are not removed.
+
+```powershell
+$cleanup = @{
+    Repository        = '<owner>/BlogAssets'
+    SubscriptionId    = '<subscription-id>'
+    AppName           = 'gh-blob-to-sql-deploy'
+    SqlAdminGroupName = 'sg-blob-to-sql-sql-admins'
+}
+./scripts/Remove-BlobToSqlDeployment.ps1 @cleanup -WhatIf   # preview
+./scripts/Remove-BlobToSqlDeployment.ps1 @cleanup           # asks before each deletion
 ```
 
 ## Database project

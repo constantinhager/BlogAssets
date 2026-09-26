@@ -36,7 +36,6 @@ env:
   TF_VAR_sql_admin_login_name: ${{ vars.SQL_ADMIN_GROUP_NAME }}
   TF_VAR_sql_admin_object_id: ${{ vars.SQL_ADMIN_GROUP_ID }}
   TERRAFORM_VERSION: "1.16.4"
-  TF_VAR_FILE: env/prod.tfvars
   FUNCTION_NAME: Import-CsvBlob
   # Database project
   DOTNET_VERSION: "10.0.x" # Microsoft.Build.Sql needs .NET 8+, SqlPackage runs on .NET 8/10
@@ -118,7 +117,6 @@ jobs:
       - name: terraform plan
         run: |
           terraform plan -no-color -lock-timeout=5m \
-            -var-file="$TF_VAR_FILE" \
             -var "enable_event_subscription=${{ steps.detect.outputs.deployed }}" \
             -out tfplan
           {
@@ -229,7 +227,6 @@ jobs:
       - name: terraform apply (infrastructure)
         run: |
           terraform apply -auto-approve -no-color -lock-timeout=5m \
-            -var-file="$TF_VAR_FILE" \
             -var "enable_event_subscription=${{ steps.detect.outputs.deployed }}"
 
       - name: Read outputs
@@ -293,5 +290,4 @@ jobs:
             echo "Waiting for $FUNCTION_NAME to be listed ($i/20)..."; sleep 15
           done
           terraform apply -auto-approve -no-color -lock-timeout=5m \
-            -var-file="$TF_VAR_FILE" \
             -var "enable_event_subscription=true"

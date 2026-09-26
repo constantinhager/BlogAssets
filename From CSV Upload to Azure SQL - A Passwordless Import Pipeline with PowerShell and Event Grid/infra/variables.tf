@@ -86,6 +86,10 @@ variable "enable_event_subscription" {
 }
 
 variable "tags" {
-  type    = map(string)
-  default = {}
+  type = map(string)
+  default = {
+    workload = "blob-to-sql"
+    managed  = "terraform"
+  }
+  description = "Tags on all resources. scripts/Remove-BlobToSqlDeployment.ps1 finds the resource group by workload."
 }
