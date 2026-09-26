@@ -27,15 +27,30 @@ function Get-CsvDelimiter {
 	)
 
 	if ($Setting -and $Setting -ne 'auto') {
-		if ($Setting -in 'tab', '\t') { return [char]"`t" }
-		if ($Setting.Length -ne 1) { throw "CSV_DELIMITER must be a single character, 'tab' or 'auto'. Got '$Setting'." }
+		if ($Setting -in 'tab', '\t') {
+			return [char]"`t"
+		}
+		if ($Setting.Length -ne 1) {
+			throw "CSV_DELIMITER must be a single character, 'tab' or 'auto'. Got '$Setting'."
+		}
 		return [char]$Setting
 	}
 
-	$candidates = foreach ($char in ';', ',', "`t") {
-		[PSCustomObject]@{ Char = [char]$char; Count = ($HeaderLine.ToCharArray() | Where-Object { $_ -eq $char }).Count }
+	$delimiters = @(
+		';'
+		','
+		"`t"
+	)
+	$candidates = foreach ($char in $delimiters) {
+		[PSCustomObject]@{
+			Char  = [char]$char
+			Count = ($HeaderLine.ToCharArray() | Where-Object { $_ -eq $char }).Count
+		}
 	}
 	$best = $candidates | Sort-Object Count -Descending | Select-Object -First 1
-	if ($best.Count -eq 0) { return [char]',' } # single-column file
+	if ($best.Count -eq 0) {
+		# Single-column file
+		return [char]','
+	}
 	$best.Char
 }

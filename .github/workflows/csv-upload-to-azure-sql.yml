@@ -160,18 +160,26 @@ jobs:
         shell: pwsh
         run: |
           $token = az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv
-          if ($LASTEXITCODE -ne 0) { throw 'az account get-access-token failed' }
+          if ($LASTEXITCODE -ne 0) {
+            throw 'az account get-access-token failed'
+          }
           Write-Host "::add-mask::$token"
           $out = Join-Path $env:RUNNER_TEMP 'db-changes.sql'
-          ../scripts/Publish-Database.ps1 -Action Script -OutputPath $out `
-            -DacpacPath       "$env:RUNNER_TEMP/dacpac/BlobToSqlDb.dacpac" `
-            -SqlServerFqdn    '${{ steps.tf.outputs.sql_server_fqdn }}' `
-            -Database         '${{ steps.tf.outputs.sql_database }}' `
-            -IdentityName     '${{ steps.tf.outputs.sql_identity_name }}' `
-            -IdentityClientId '${{ steps.tf.outputs.sql_identity_client_id }}' `
-            -AccessToken      $token
+          $publishParam = @{
+            Action           = 'Script'
+            OutputPath       = $out
+            DacpacPath       = "$env:RUNNER_TEMP/dacpac/BlobToSqlDb.dacpac"
+            SqlServerFqdn    = '${{ steps.tf.outputs.sql_server_fqdn }}'
+            Database         = '${{ steps.tf.outputs.sql_database }}'
+            IdentityName     = '${{ steps.tf.outputs.sql_identity_name }}'
+            IdentityClientId = '${{ steps.tf.outputs.sql_identity_client_id }}'
+            AccessToken      = $token
+          }
+          ../scripts/Publish-Database.ps1 @publishParam
           $script = Get-Content -Raw $out
-          if ($script.Length -gt 60000) { $script = $script.Substring(0, 60000) + "`n-- (truncated)" }
+          if ($script.Length -gt 60000) {
+            $script = $script.Substring(0, 60000) + "`n-- (truncated)"
+          }
           "### Database changes (SqlPackage script)`n``````sql`n$script`n``````" | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
       - name: Close SQL firewall
@@ -251,15 +259,20 @@ jobs:
         shell: pwsh
         run: |
           $token = az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv
-          if ($LASTEXITCODE -ne 0) { throw 'az account get-access-token failed' }
+          if ($LASTEXITCODE -ne 0) {
+            throw 'az account get-access-token failed'
+          }
           Write-Host "::add-mask::$token"
-          ../scripts/Publish-Database.ps1 -Action Publish `
-            -DacpacPath       "$env:RUNNER_TEMP/dacpac/BlobToSqlDb.dacpac" `
-            -SqlServerFqdn    '${{ steps.tf.outputs.sql_server_fqdn }}' `
-            -Database         '${{ steps.tf.outputs.sql_database }}' `
-            -IdentityName     '${{ steps.tf.outputs.sql_identity_name }}' `
-            -IdentityClientId '${{ steps.tf.outputs.sql_identity_client_id }}' `
-            -AccessToken      $token
+          $publishParam = @{
+            Action           = 'Publish'
+            DacpacPath       = "$env:RUNNER_TEMP/dacpac/BlobToSqlDb.dacpac"
+            SqlServerFqdn    = '${{ steps.tf.outputs.sql_server_fqdn }}'
+            Database         = '${{ steps.tf.outputs.sql_database }}'
+            IdentityName     = '${{ steps.tf.outputs.sql_identity_name }}'
+            IdentityClientId = '${{ steps.tf.outputs.sql_identity_client_id }}'
+            AccessToken      = $token
+          }
+          ../scripts/Publish-Database.ps1 @publishParam
 
       - name: Close SQL firewall
         if: always() && steps.fw.outcome == 'success'

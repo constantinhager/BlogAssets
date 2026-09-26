@@ -43,7 +43,9 @@ function ConvertTo-ImportValue {
 	$column = $Definition.Column
 
 	if ([string]::IsNullOrWhiteSpace($Value)) {
-		if ($Definition.Required) { throw "Column '$column' is required but empty." }
+		if ($Definition.Required) {
+			throw "Column '$column' is required but empty."
+		}
 		return $null
 	}
 	$text = $Value.Trim()
@@ -66,8 +68,11 @@ function ConvertTo-ImportValue {
 			$normalized = $text -replace '\s', ''
 			$lastDot = $normalized.LastIndexOf('.')
 			$lastComma = $normalized.LastIndexOf(',')
-			if ($lastComma -gt $lastDot) { $normalized = $normalized.Replace('.', '').Replace(',', '.') }
-			else { $normalized = $normalized.Replace(',', '') }
+			if ($lastComma -gt $lastDot) {
+				$normalized = $normalized.Replace('.', '').Replace(',', '.')
+			} else {
+				$normalized = $normalized.Replace(',', '')
+			}
 
 			$result = [decimal]0
 			if (-not [decimal]::TryParse($normalized, [System.Globalization.NumberStyles]::Number, $inv, [ref]$result)) {
@@ -85,8 +90,17 @@ function ConvertTo-ImportValue {
 			}
 
 			$formats = [string[]]@(
-				'yyyy-MM-ddTHH:mm:ss.FFFFFFF', 'yyyy-MM-dd HH:mm:ss.FFFFFFF', 'yyyy-MM-ddTHH:mm', 'yyyy-MM-dd HH:mm', 'yyyy-MM-dd'
-				'dd.MM.yyyy HH:mm:ss', 'dd.MM.yyyy HH:mm', 'dd.MM.yyyy', 'd.M.yyyy H:mm:ss', 'd.M.yyyy H:mm', 'd.M.yyyy'
+				'yyyy-MM-ddTHH:mm:ss.FFFFFFF'
+				'yyyy-MM-dd HH:mm:ss.FFFFFFF'
+				'yyyy-MM-ddTHH:mm'
+				'yyyy-MM-dd HH:mm'
+				'yyyy-MM-dd'
+				'dd.MM.yyyy HH:mm:ss'
+				'dd.MM.yyyy HH:mm'
+				'dd.MM.yyyy'
+				'd.M.yyyy H:mm:ss'
+				'd.M.yyyy H:mm'
+				'd.M.yyyy'
 			)
 			$local = [DateTime]::MinValue
 			if (-not [DateTime]::TryParseExact($text, $formats, $inv, [System.Globalization.DateTimeStyles]::None, [ref]$local)) {

@@ -48,11 +48,13 @@
 
 .EXAMPLE
     Set-Location ./infra
-    ../scripts/Publish-Database.ps1 `
-        -SqlServerFqdn    (terraform output -raw sql_server_fqdn) `
-        -Database         (terraform output -raw sql_database) `
-        -IdentityName     (terraform output -raw sql_identity_name) `
-        -IdentityClientId (terraform output -raw sql_identity_client_id)
+    $publish = @{
+        SqlServerFqdn    = terraform output -raw sql_server_fqdn
+        Database         = terraform output -raw sql_database
+        IdentityName     = terraform output -raw sql_identity_name
+        IdentityClientId = terraform output -raw sql_identity_client_id
+    }
+    ../scripts/Publish-Database.ps1 @publish
 
 .EXAMPLE
     ../scripts/Publish-Database.ps1 -Action Script -OutputPath ./db-changes.sql ...
@@ -108,21 +110,30 @@ if (-not $sqlpackage) {
 if (-not $DacpacPath) {
     Write-Host "Building $projectDir ..."
     dotnet build (Join-Path $projectDir 'BlobToSqlDb.sqlproj') --configuration Release
-    if ($LASTEXITCODE -ne 0) { throw 'dotnet build of the database project failed.' }
+    if ($LASTEXITCODE -ne 0) {
+        throw 'dotnet build of the database project failed.'
+    }
     $DacpacPath = Join-Path $projectDir 'bin' 'Release' 'BlobToSqlDb.dacpac'
 }
-if (-not (Test-Path $DacpacPath)) { throw "Dacpac not found: $DacpacPath" }
+if (-not (Test-Path $DacpacPath)) {
+    throw "Dacpac not found: $DacpacPath"
+}
 #endregion Tools
 
 #region Token
 if (-not $AccessToken) {
     if (Get-Command Get-AzAccessToken -ErrorAction Ignore) {
         $tok = Get-AzAccessToken -ResourceUrl 'https://database.windows.net/'
-        $AccessToken = if ($tok.Token -is [securestring]) { $tok.Token | ConvertFrom-SecureString -AsPlainText } else { $tok.Token }
-    }
-    else {
+        if ($tok.Token -is [securestring]) {
+            $AccessToken = $tok.Token | ConvertFrom-SecureString -AsPlainText
+        } else {
+            $AccessToken = $tok.Token
+        }
+    } else {
         $AccessToken = az account get-access-token --resource https://database.windows.net/ --query accessToken --output tsv
-        if ($LASTEXITCODE -ne 0 -or -not $AccessToken) { throw 'Could not get a SQL access token. Log in with Connect-AzAccount or az login.' }
+        if ($LASTEXITCODE -ne 0 -or -not $AccessToken) {
+            throw 'Could not get a SQL access token. Log in with Connect-AzAccount or az login.'
+        }
     }
 }
 #endregion Token
@@ -138,7 +149,14 @@ $arguments = @(
     "/Variables:IdentityClientId=$IdentityClientId"
 )
 if ($Action -ne 'Publish') {
-    if (-not $OutputPath) { $OutputPath = Join-Path (Get-Location) ("db-{0}.{1}" -f $Action.ToLower(), $(if ($Action -eq 'Script') { 'sql' } else { 'xml' })) }
+    if (-not $OutputPath) {
+        if ($Action -eq 'Script') {
+            $extension = 'sql'
+        } else {
+            $extension = 'xml'
+        }
+        $OutputPath = Join-Path (Get-Location) ('db-{0}.{1}' -f $Action.ToLower(), $extension)
+    }
     $arguments += "/OutputPath:$OutputPath"
 }
 
@@ -146,10 +164,16 @@ if ($Action -ne 'Publish') {
 for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
     Write-Host "sqlpackage /Action:$Action -> $SqlServerFqdn/$Database (attempt $attempt/$MaxAttempts)"
     & $sqlpackage.Source @arguments
-    if ($LASTEXITCODE -eq 0) { break }
-    if ($attempt -eq $MaxAttempts) { throw "sqlpackage /Action:$Action failed with exit code $LASTEXITCODE" }
+    if ($LASTEXITCODE -eq 0) {
+        break
+    }
+    if ($attempt -eq $MaxAttempts) {
+        throw "sqlpackage /Action:$Action failed with exit code $LASTEXITCODE"
+    }
     Write-Warning "sqlpackage failed with exit code $LASTEXITCODE. Retrying in 20 s."
     Start-Sleep -Seconds 20
 }
 
-if ($OutputPath) { Write-Host "Output: $OutputPath" }
+if ($OutputPath) {
+    Write-Host "Output: $OutputPath"
+}

@@ -69,8 +69,14 @@ Run this once with an account that is Owner on the subscription and can create E
 ```powershell
 Connect-AzAccount -Tenant <tenant>.onmicrosoft.com
 gh auth login   # only for -ConfigureGitHub
-./scripts/New-GitHubDeploymentIdentity.ps1 -Repository '<owner>/BlogAssets' -SubscriptionId '<subscription-id>' `
-    -AppName 'gh-blob-to-sql-deploy' -SqlAdminGroupName 'sg-blob-to-sql-sql-admins' -ConfigureGitHub
+$setup = @{
+    Repository        = '<owner>/BlogAssets'
+    SubscriptionId    = '<subscription-id>'
+    AppName           = 'gh-blob-to-sql-deploy'
+    SqlAdminGroupName = 'sg-blob-to-sql-sql-admins'
+    ConfigureGitHub   = $true
+}
+./scripts/New-GitHubDeploymentIdentity.ps1 @setup
 ```
 
 It creates or reuses:
@@ -105,9 +111,14 @@ The pipeline runs as a service principal. If a service principal runs `CREATE US
 
 # After a deployment: upload a sample file to the data storage account
 # (Terraform output data_storage_account, in the resource group the pipeline created)
-az storage blob upload --auth-mode login `
-  --account-name <data storage account> `
-  -c incoming -f ./tests/sample-semicolon.csv -n sample.csv
+$upload = @(
+    '--auth-mode', 'login'
+    '--account-name', '<data storage account>'
+    '--container-name', 'incoming'
+    '--file', './tests/sample-semicolon.csv'
+    '--name', 'sample.csv'
+)
+az storage blob upload @upload
 ```
 
 ## Database project

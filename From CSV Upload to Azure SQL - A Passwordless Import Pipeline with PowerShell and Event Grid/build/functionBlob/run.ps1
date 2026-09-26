@@ -11,14 +11,19 @@ Write-Host "Trigger: %COMMAND% has been invoked for blob '$($TriggerMetadata.Nam
 # Pass only the parameters the command declares
 $command = Get-Command -Name '%COMMAND%'
 $parameters = @{}
-if ($command.Parameters.ContainsKey('InputBlob')) { $parameters.InputBlob = $InputBlob }
-if ($command.Parameters.ContainsKey('BlobName')) { $parameters.BlobName = $TriggerMetadata.Name }
-if ($command.Parameters.ContainsKey('TriggerMetadata')) { $parameters.TriggerMetadata = $TriggerMetadata }
+if ($command.Parameters.ContainsKey('InputBlob')) {
+	$parameters.InputBlob = $InputBlob
+}
+if ($command.Parameters.ContainsKey('BlobName')) {
+	$parameters.BlobName = $TriggerMetadata.Name
+}
+if ($command.Parameters.ContainsKey('TriggerMetadata')) {
+	$parameters.TriggerMetadata = $TriggerMetadata
+}
 
 try {
 	$results = & $command @parameters -ErrorAction Stop
-}
-catch {
+} catch {
 	$_ | Out-String | ForEach-Object {
 		foreach ($line in ($_ -split "`n")) {
 			Write-Warning $line

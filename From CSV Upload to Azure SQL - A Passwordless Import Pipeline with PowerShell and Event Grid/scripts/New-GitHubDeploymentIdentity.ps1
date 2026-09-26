@@ -79,8 +79,14 @@
 
 .EXAMPLE
     PS C:\> Connect-AzAccount -Tenant contoso.onmicrosoft.com
-    PS C:\> ./scripts/New-GitHubDeploymentIdentity.ps1 -Repository 'contoso/BlogAssets' -SubscriptionId '<sub-id>' `
-        -AppName 'gh-blob-to-sql-deploy' -SqlAdminGroupName 'sg-blob-to-sql-sql-admins' -ConfigureGitHub
+    PS C:\> $setup = @{
+                Repository        = 'contoso/BlogAssets'
+                SubscriptionId    = '<sub-id>'
+                AppName           = 'gh-blob-to-sql-deploy'
+                SqlAdminGroupName = 'sg-blob-to-sql-sql-admins'
+                ConfigureGitHub   = $true
+            }
+    PS C:\> ./scripts/New-GitHubDeploymentIdentity.ps1 @setup
 
     The workflow lives in the BlogAssets repository, so the default names (gh-BlogAssets-deploy,
     sg-BlogAssets-sql-admins) would not say which blog post they belong to. Pass explicit names.
@@ -133,8 +139,12 @@ param (
 
 $ErrorActionPreference = 'Stop'
 $owner, $repoName = $Repository.Split('/')
-if (-not $AppName) { $AppName = "gh-$repoName-deploy" }
-if (-not $SqlAdminGroupName) { $SqlAdminGroupName = "sg-$repoName-sql-admins" }
+if (-not $AppName) {
+    $AppName = "gh-$repoName-deploy"
+}
+if (-not $SqlAdminGroupName) {
+    $SqlAdminGroupName = "sg-$repoName-sql-admins"
+}
 
 #region Helpers
 function Write-Step {
@@ -179,11 +189,18 @@ function Get-GitHubRepository {
 
     if (Get-Command gh -ErrorAction Ignore) {
         $json = gh api "repos/$FullName"
-        if ($LASTEXITCODE -ne 0) { throw "gh api repos/$FullName failed. Run 'gh auth login'." }
+        if ($LASTEXITCODE -ne 0) {
+            throw "gh api repos/$FullName failed. Run 'gh auth login'."
+        }
         return $json | ConvertFrom-Json
     }
-    $headers = @{ Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
-    if ($env:GITHUB_TOKEN) { $headers.Authorization = "Bearer $env:GITHUB_TOKEN" }
+    $headers = @{
+        Accept                 = 'application/vnd.github+json'
+        'X-GitHub-Api-Version' = '2022-11-28'
+    }
+    if ($env:GITHUB_TOKEN) {
+        $headers.Authorization = "Bearer $env:GITHUB_TOKEN"
+    }
     Invoke-RestMethod -Uri "https://api.github.com/repos/$FullName" -Headers $headers
 }
 
@@ -228,21 +245,36 @@ function Add-RoleAssignmentIfMissing {
         $Condition
     )
 
-    $existing = Get-AzRoleAssignment -ObjectId $ObjectId -RoleDefinitionName $Role -Scope $Scope -ErrorAction Ignore |
-    Where-Object Scope -EQ $Scope
-    if ($existing) { Write-Host "    '$Role' already assigned at $Scope"; return }
+    $param = @{
+        ObjectId           = $ObjectId
+        RoleDefinitionName = $Role
+        Scope              = $Scope
+    }
 
-    $param = @{ ObjectId = $ObjectId; RoleDefinitionName = $Role; Scope = $Scope }
-    if ($Condition) { $param.Condition = $Condition; $param.ConditionVersion = '2.0' }
+    $existing = Get-AzRoleAssignment @param -ErrorAction Ignore |
+        Where-Object Scope -EQ $Scope
+    if ($existing) {
+        Write-Host "    '$Role' already assigned at $Scope"
+        return
+    }
+
+    if ($Condition) {
+        $param.Condition = $Condition
+        $param.ConditionVersion = '2.0'
+    }
 
     # A new service principal can take a moment to replicate
     for ($i = 1; $i -le 6; $i++) {
         try {
-            if ($PSCmdlet.ShouldProcess($Scope, "Assign '$Role' to $ObjectId")) { $null = New-AzRoleAssignment @param }
+            if ($PSCmdlet.ShouldProcess($Scope, "Assign '$Role' to $ObjectId")) {
+                $null = New-AzRoleAssignment @param
+            }
             Write-Host "    '$Role' assigned at $Scope"
             return
         } catch {
-            if ($i -eq 6 -or $_.Exception.Message -notmatch 'PrincipalNotFound|does not exist in the directory') { throw }
+            if ($i -eq 6 -or $_.Exception.Message -notmatch 'PrincipalNotFound|does not exist in the directory') {
+                throw
+            }
             Start-Sleep -Seconds 10
         }
     }
@@ -252,7 +284,9 @@ function Add-RoleAssignmentIfMissing {
 #region 0. Context
 Write-Step 'Azure context'
 $context = Get-AzContext
-if (-not $context) { $context = (Connect-AzAccount -Subscription $SubscriptionId).Context }
+if (-not $context) {
+    $context = (Connect-AzAccount -Subscription $SubscriptionId).Context
+}
 $context = Set-AzContext -Subscription $SubscriptionId
 $tenantId = $context.Tenant.Id
 $subScope = "/subscriptions/$SubscriptionId"
@@ -266,14 +300,29 @@ $immutable = switch ($SubjectFormat) {
     'Legacy' { $false }
     'Auto' { [datetime]$repo.created_at -gt [datetime]'2026-07-15T00:00:00Z' }
 }
-$repoSegment = if ($immutable) { "$($repo.owner.login)@$($repo.owner.id)/$($repo.name)@$($repo.id)" } else { "$($repo.owner.login)/$($repo.name)" }
+if ($immutable) {
+    $repoSegment = "$($repo.owner.login)@$($repo.owner.id)/$($repo.name)@$($repo.id)"
+    $subjectFormatName = 'immutable'
+} else {
+    $repoSegment = "$($repo.owner.login)/$($repo.name)"
+    $subjectFormatName = 'name-based'
+}
 Write-Host "    Repository ID $($repo.id), owner ID $($repo.owner.id), created $($repo.created_at)"
-Write-Host "    Subject format: $(if ($immutable) { 'immutable' } else { 'name-based' }) (repo:${repoSegment}:...)"
+Write-Host "    Subject format: $subjectFormatName (repo:${repoSegment}:...)"
 #endregion 0. Context
 
 #region 1. Resource providers
 Write-Step 'Resource providers'
-foreach ($namespace in 'Microsoft.Web', 'Microsoft.Storage', 'Microsoft.Sql', 'Microsoft.EventGrid', 'Microsoft.Insights', 'Microsoft.OperationalInsights', 'Microsoft.ManagedIdentity') {
+$namespaces = @(
+    'Microsoft.Web'
+    'Microsoft.Storage'
+    'Microsoft.Sql'
+    'Microsoft.EventGrid'
+    'Microsoft.Insights'
+    'Microsoft.OperationalInsights'
+    'Microsoft.ManagedIdentity'
+)
+foreach ($namespace in $namespaces) {
     $state = (Get-AzResourceProvider -ProviderNamespace $namespace | Select-Object -First 1).RegistrationState
     if ($state -ne 'Registered' -and $PSCmdlet.ShouldProcess($namespace, 'Register resource provider')) {
         $null = Register-AzResourceProvider -ProviderNamespace $namespace
@@ -287,7 +336,12 @@ foreach ($namespace in 'Microsoft.Web', 'Microsoft.Storage', 'Microsoft.Sql', 'M
 Write-Step "App registration $AppName"
 $app = Get-AzADApplication -DisplayName $AppName | Select-Object -First 1
 if (-not $app -and $PSCmdlet.ShouldProcess($AppName, 'Create app registration')) {
-    $app = New-AzADApplication -DisplayName $AppName -SignInAudience AzureADMyOrg -Note "GitHub Actions OIDC for $Repository. No secrets."
+    $appParam = @{
+        DisplayName    = $AppName
+        SignInAudience = 'AzureADMyOrg'
+        Note           = "GitHub Actions OIDC for $Repository. No secrets."
+    }
+    $app = New-AzADApplication @appParam
 }
 $sp = Get-AzADServicePrincipal -ApplicationId $app.AppId -ErrorAction Ignore
 if (-not $sp -and $PSCmdlet.ShouldProcess($AppName, 'Create service principal')) {
@@ -299,8 +353,16 @@ Write-Host "    Client ID $($app.AppId), SP object ID $($sp.Id)"
 #region 3. Federated credentials
 Write-Step 'Federated credentials'
 $wanted = @(
-    @{ Name = "gh-env-$Environment"; Subject = "repo:${repoSegment}:environment:$Environment"; Description = "Deploy job ($Environment environment)" }
-    @{ Name = 'gh-pull-request'; Subject = "repo:${repoSegment}:pull_request"; Description = 'Terraform plan on pull requests' }
+    @{
+        Name        = "gh-env-$Environment"
+        Subject     = "repo:${repoSegment}:environment:$Environment"
+        Description = "Deploy job ($Environment environment)"
+    }
+    @{
+        Name        = 'gh-pull-request'
+        Subject     = "repo:${repoSegment}:pull_request"
+        Description = 'Terraform plan on pull requests'
+    }
 )
 $existing = @(Get-AzADAppFederatedCredential -ApplicationObjectId $app.Id)
 foreach ($credential in $wanted) {
@@ -309,10 +371,20 @@ foreach ($credential in $wanted) {
         Write-Warning "    '$($credential.Name)' exists with subject '$($match.Subject)', expected '$($credential.Subject)'. Not changed. Remove it and re-run to replace it."
         continue
     }
-    if ($match) { Write-Host "    $($credential.Name): $($credential.Subject) (exists)"; continue }
+    if ($match) {
+        Write-Host "    $($credential.Name): $($credential.Subject) (exists)"
+        continue
+    }
     if ($PSCmdlet.ShouldProcess($credential.Subject, 'Create federated credential')) {
-        $null = New-AzADAppFederatedCredential -ApplicationObjectId $app.Id -Name $credential.Name -Subject $credential.Subject `
-            -Issuer 'https://token.actions.githubusercontent.com' -Audience 'api://AzureADTokenExchange' -Description $credential.Description
+        $credentialParam = @{
+            ApplicationObjectId = $app.Id
+            Name                = $credential.Name
+            Subject             = $credential.Subject
+            Issuer              = 'https://token.actions.githubusercontent.com'
+            Audience            = 'api://AzureADTokenExchange'
+            Description         = $credential.Description
+        }
+        $null = New-AzADAppFederatedCredential @credentialParam
     }
     Write-Host "    $($credential.Name): $($credential.Subject) (created)"
 }
@@ -348,7 +420,13 @@ AND
  )
 )
 "@
-Add-RoleAssignmentIfMissing -ObjectId $sp.Id -Role 'Role Based Access Control Administrator' -Scope $subScope -Condition $condition
+$rbacAdminParam = @{
+    ObjectId  = $sp.Id
+    Role      = 'Role Based Access Control Administrator'
+    Scope     = $subScope
+    Condition = $condition
+}
+Add-RoleAssignmentIfMissing @rbacAdminParam
 #endregion 4. RBAC on the subscription
 
 #region 5. Terraform state storage
@@ -368,39 +446,70 @@ if (-not $StateStorageAccount) {
     $StateStorageAccount = $existingAccount
 }
 
+$stateAccountParam = @{
+    ResourceGroupName  = $StateResourceGroup
+    StorageAccountName = $StateStorageAccount
+}
+
 $account = Get-AzStorageAccount -ResourceGroupName $StateResourceGroup -Name $StateStorageAccount -ErrorAction Ignore
 if (-not $account -and $PSCmdlet.ShouldProcess($StateStorageAccount, 'Create storage account')) {
-    $account = New-AzStorageAccount -ResourceGroupName $StateResourceGroup -Name $StateStorageAccount -Location $Location `
-        -SkuName Standard_ZRS -Kind StorageV2 -MinimumTlsVersion TLS1_2 -AllowBlobPublicAccess $false -AllowSharedKeyAccess $false
-    $null = Update-AzStorageBlobServiceProperty -ResourceGroupName $StateResourceGroup -StorageAccountName $StateStorageAccount -IsVersioningEnabled $true
-    $null = Enable-AzStorageBlobDeleteRetentionPolicy -ResourceGroupName $StateResourceGroup -StorageAccountName $StateStorageAccount -RetentionDays 30
+    $newAccountParam = @{
+        ResourceGroupName     = $StateResourceGroup
+        Name                  = $StateStorageAccount
+        Location              = $Location
+        SkuName               = 'Standard_ZRS'
+        Kind                  = 'StorageV2'
+        MinimumTlsVersion     = 'TLS1_2'
+        AllowBlobPublicAccess = $false
+        AllowSharedKeyAccess  = $false
+    }
+    $account = New-AzStorageAccount @newAccountParam
+    $null = Update-AzStorageBlobServiceProperty @stateAccountParam -IsVersioningEnabled $true
+    $null = Enable-AzStorageBlobDeleteRetentionPolicy @stateAccountParam -RetentionDays 30
 }
 # Management-plane container creation: works without data-plane rights
-if (-not (Get-AzRmStorageContainer -ResourceGroupName $StateResourceGroup -StorageAccountName $StateStorageAccount -Name $StateContainer -ErrorAction Ignore) -and
-    $PSCmdlet.ShouldProcess($StateContainer, 'Create container')) {
-    $null = New-AzRmStorageContainer -ResourceGroupName $StateResourceGroup -StorageAccountName $StateStorageAccount -Name $StateContainer
+$container = Get-AzRmStorageContainer @stateAccountParam -Name $StateContainer -ErrorAction Ignore
+if (-not $container -and $PSCmdlet.ShouldProcess($StateContainer, 'Create container')) {
+    $null = New-AzRmStorageContainer @stateAccountParam -Name $StateContainer
 }
 Write-Host "    $StateResourceGroup / $StateStorageAccount / $StateContainer"
 
 Add-RoleAssignmentIfMissing -ObjectId $sp.Id -Role 'Storage Blob Data Contributor' -Scope $account.Id
-if ($me) { Add-RoleAssignmentIfMissing -ObjectId $me.Id -Role 'Storage Blob Data Contributor' -Scope $account.Id }
+if ($me) {
+    Add-RoleAssignmentIfMissing -ObjectId $me.Id -Role 'Storage Blob Data Contributor' -Scope $account.Id
+}
 #endregion 5. Terraform state storage
 
 #region 6. SQL admin group
 Write-Step "SQL admin group $SqlAdminGroupName"
 $group = Get-AzADGroup -DisplayName $SqlAdminGroupName | Select-Object -First 1
 if (-not $group -and $PSCmdlet.ShouldProcess($SqlAdminGroupName, 'Create security group')) {
-    $mailNickname = ($SqlAdminGroupName -replace '[^a-zA-Z0-9-]', '')
-    $group = New-AzADGroup -DisplayName $SqlAdminGroupName -MailNickname $mailNickname -SecurityEnabled -Description "Entra admin of the Azure SQL server deployed from $Repository"
+    $groupParam = @{
+        DisplayName     = $SqlAdminGroupName
+        MailNickname    = $SqlAdminGroupName -replace '[^a-zA-Z0-9-]', ''
+        SecurityEnabled = $true
+        Description     = "Entra admin of the Azure SQL server deployed from $Repository"
+    }
+    $group = New-AzADGroup @groupParam
 }
 $memberIds = @(Get-AzADGroupMember -GroupObjectId $group.Id | ForEach-Object Id)
-foreach ($memberId in @($sp.Id, $me.Id) | Where-Object { $_ }) {
-    if ($memberId -in $memberIds) { continue }
+$wantedMemberIds = @(
+    $sp.Id
+    $me.Id
+)
+foreach ($memberId in $wantedMemberIds | Where-Object { $_ }) {
+    if ($memberId -in $memberIds) {
+        continue
+    }
     if ($PSCmdlet.ShouldProcess($SqlAdminGroupName, "Add member $memberId")) {
         Add-AzADGroupMember -TargetGroupObjectId $group.Id -MemberObjectId $memberId
     }
 }
-Write-Host "    Group object ID $($group.Id), members: service principal$(if ($me) { ', you' })"
+$memberNames = 'service principal'
+if ($me) {
+    $memberNames += ', you'
+}
+Write-Host "    Group object ID $($group.Id), members: $memberNames"
 #endregion 6. SQL admin group
 
 #region 7. GitHub
@@ -418,16 +527,22 @@ $variables = [ordered]@{
 
 if ($ConfigureGitHub) {
     Write-Step 'GitHub variables and environment'
-    if (-not (Get-Command gh -ErrorAction Ignore)) { throw 'gh CLI not found. Install it or set the variables below manually.' }
+    if (-not (Get-Command gh -ErrorAction Ignore)) {
+        throw 'gh CLI not found. Install it or set the variables below manually.'
+    }
     foreach ($name in $variables.Keys) {
         if ($PSCmdlet.ShouldProcess("$Repository : $name", 'Set GitHub variable')) {
             gh variable set $name --body $variables[$name] --repo $Repository
-            if ($LASTEXITCODE -ne 0) { throw "gh variable set $name failed" }
+            if ($LASTEXITCODE -ne 0) {
+                throw "gh variable set $name failed"
+            }
         }
     }
     if ($PSCmdlet.ShouldProcess("$Repository : $Environment", 'Create GitHub environment')) {
         $null = gh api --method PUT "repos/$Repository/environments/$Environment"
-        if ($LASTEXITCODE -ne 0) { throw "Creating environment '$Environment' failed" }
+        if ($LASTEXITCODE -ne 0) {
+            throw "Creating environment '$Environment' failed"
+        }
     }
     Write-Host "    Done. Add required reviewers to the '$Environment' environment in the repository settings if you want an approval gate."
 }
@@ -435,4 +550,6 @@ if ($ConfigureGitHub) {
 
 Write-Step 'Summary'
 [PSCustomObject]$variables | Format-List | Out-String | Write-Host
-if (-not $ConfigureGitHub) { Write-Host 'Set these as GitHub repository variables (Settings > Secrets and variables > Actions > Variables), or re-run with -ConfigureGitHub.' }
+if (-not $ConfigureGitHub) {
+    Write-Host 'Set these as GitHub repository variables (Settings > Secrets and variables > Actions > Variables), or re-run with -ConfigureGitHub.'
+}

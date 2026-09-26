@@ -80,7 +80,9 @@ function Import-CsvBlob {
 		throw "'$BlobName': missing column(s) $($missing -join ', '). Found: $($headers -join ', '). Delimiter used: '$delimiter'."
 	}
 	$extra = $headers | Where-Object { $_ -notin $script:ImportSchema.Column }
-	if ($extra) { Write-Warning "'$BlobName': ignoring column(s) $($extra -join ', ')." }
+	if ($extra) {
+		Write-Warning "'$BlobName': ignoring column(s) $($extra -join ', ')."
+	}
 	#endregion Validate header
 
 	$importedAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fff', [System.Globalization.CultureInfo]::InvariantCulture)
@@ -95,15 +97,21 @@ function Import-CsvBlob {
 		}
 		$rowOk = $true
 		foreach ($definition in $script:ImportSchema) {
-			try {
-				$row[$definition.Column] = ConvertTo-ImportValue -Value $records[$index].$($definition.Column) -Definition $definition -TimeZone $timeZone
+			$convertParam = @{
+				Value      = $records[$index].$($definition.Column)
+				Definition = $definition
+				TimeZone   = $timeZone
 			}
-			catch {
+			try {
+				$row[$definition.Column] = ConvertTo-ImportValue @convertParam
+			} catch {
 				$errors.Add("Row ${rowNumber}: $($_.Exception.Message)")
 				$rowOk = $false
 			}
 		}
-		if (-not $rowOk) { continue }
+		if (-not $rowOk) {
+			continue
+		}
 		$row.ImportedAt = $importedAt
 		$rows.Add([PSCustomObject]$row)
 	}
