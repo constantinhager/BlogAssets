@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Publish options used by scripts/Publish-Database.ps1 (local and CI).
+     Server, database, token and SqlCmd variables are passed on the command line. -->
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <!-- Stop if a change would lose data (dropped column, narrowed type, ...) -->
+    <BlockOnPossibleDataLoss>True</BlockOnPossibleDataLoss>
+    <!-- Objects missing from the project stay in the database. Set to True to make the project authoritative. -->
+    <DropObjectsNotInSource>False</DropObjectsNotInSource>
+    <!-- Users and role memberships are environment-specific and handled in Scripts\PostDeployment.sql -->
+    <ExcludeObjectTypes>Users;Logins;RoleMembership</ExcludeObjectTypes>
+    <!-- Database settings (SKU, size, ...) belong to Terraform -->
+    <ScriptDatabaseOptions>False</ScriptDatabaseOptions>
+    <IncludeTransactionalScripts>True</IncludeTransactionalScripts>
+    <GenerateSmartDefaults>False</GenerateSmartDefaults>
+  </PropertyGroup>
+</Project>

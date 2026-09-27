@@ -1,0 +1,5 @@
+publish/
+Function.zip
+function/local.settings.json
+infra/.terraform/
+infra/*.tfstate*

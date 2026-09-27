@@ -19,6 +19,24 @@ Assets are grouped by blog post, one folder per post:
     SharePoint site.
   - `Export-ServicesToSharePoint.ps1` - script run on the virtual machine
     itself to collect the service report and upload it to SharePoint.
+- [From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid](<From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid>) -
+  a complete project that imports CSV files uploaded to Blob Storage into
+  Azure SQL. Event Grid triggers a PowerShell function on Flex Consumption,
+  which upserts the rows through a SQL output binding. All authentication
+  uses managed identities and GitHub OIDC, with no keys or passwords.
+  - `BlobToSql/`, `build/`, `function/` - the PowerShell function app and its
+    build.
+  - `infra/` - Terraform for the Azure resources.
+  - `database/` - SQL database project, deployed as a dacpac.
+  - `scripts/` - one-time GitHub/Azure setup and database publish.
+  - `assets/blob-to-sql-infrastructure.svg` - architecture diagram.
+  - [`.github/workflows/csv-upload-to-azure-sql.yml`](.github/workflows/csv-upload-to-azure-sql.yml) -
+    CI/CD pipeline in the repository root. It only runs on changes to this
+    folder.
+
+Workflows must live in `.github/workflows/` at the repository root, where
+GitHub does not allow subfolders. Each workflow file is therefore named after
+its blog post, and its `paths` filter limits it to that post's folder.
 
 ## License
 
