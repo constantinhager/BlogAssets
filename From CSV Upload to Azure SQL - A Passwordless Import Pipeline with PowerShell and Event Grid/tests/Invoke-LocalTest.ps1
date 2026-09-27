@@ -18,6 +18,10 @@ function Invoke-Case {
         [hashtable]
         $Environment = @{},
 
+        # DeviceId values the rows must contain, in order (checks decoding, e.g. umlauts)
+        [string[]]
+        $ExpectDeviceId,
+
         [switch]
         $ExpectFailure
     )
@@ -32,6 +36,12 @@ function Invoke-Case {
         $rows = Import-CsvBlob -InputBlob $bytes -BlobName $File
         if ($ExpectFailure) {
             Write-Host "FAIL  $File - expected an error" -ForegroundColor Red
+            $script:failed++
+            return
+        }
+        $deviceIds = @($rows.DeviceId)
+        if ($ExpectDeviceId -and (Compare-Object -ReferenceObject $ExpectDeviceId -DifferenceObject $deviceIds -SyncWindow 0 -CaseSensitive)) {
+            Write-Host "FAIL  $File - DeviceId '$($deviceIds -join "', '")', expected '$($ExpectDeviceId -join "', '")'" -ForegroundColor Red
             $script:failed++
             return
         }
@@ -54,7 +64,10 @@ function Invoke-Case {
 $script:failed = 0
 Invoke-Case -File 'sample-semicolon.csv' -Environment @{ CSV_SOURCE_TIMEZONE = 'Europe/Berlin' }
 Invoke-Case -File 'sample-comma.csv'
-Invoke-Case -File 'sample-ansi.csv' -Environment @{ CSV_ENCODING = 'windows-1252' }
+# CSV_ENCODING = auto (default) detects windows-1252 and UTF-8; a fixed setting still works
+Invoke-Case -File 'sample-ansi.csv' -Environment @{ CSV_ENCODING = '' } -ExpectDeviceId 'Kühlraum-Süd'
+Invoke-Case -File 'sample-utf8.csv' -Environment @{ CSV_ENCODING = '' } -ExpectDeviceId 'Kühlraum-Süd', 'Außenlager-Öltank'
+Invoke-Case -File 'sample-ansi.csv' -Environment @{ CSV_ENCODING = 'windows-1252' } -ExpectDeviceId 'Kühlraum-Süd'
 Invoke-Case -File 'sample-invalid.csv' -ExpectFailure
 
 if ($script:failed) {

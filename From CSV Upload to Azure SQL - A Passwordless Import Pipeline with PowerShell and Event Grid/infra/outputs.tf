@@ -18,6 +18,14 @@ output "input_container" {
   value = azurerm_storage_container.incoming.name
 }
 
+output "processed_container" {
+  value = azurerm_storage_container.processed.name
+}
+
+output "failed_container" {
+  value = azurerm_storage_container.failed.name
+}
+
 output "sql_server_fqdn" {
   value = azurerm_mssql_server.sql.fully_qualified_domain_name
 }

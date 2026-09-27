@@ -174,7 +174,7 @@ foreach ($command in Get-ChildItem -Path "$workingDirectory/BlobToSql/functions/
 	}
 
 	$endpointFolder = New-Item -Path $buildFolder.FullName -Name $command.BaseName -ItemType Directory
-	$blobCode -replace '%COMMAND%', $command.BaseName -replace '%OUTPUTBINDING%', $outputName | Set-Content -Path "$($endpointFolder.FullName)/run.ps1"
+	$blobCode -replace '%COMMAND%', $command.BaseName -replace '%OUTPUTBINDING%', $outputName -replace '%CONNECTION%', $connection -replace '%MODULE%', 'BlobToSql' | Set-Content -Path "$($endpointFolder.FullName)/run.ps1"
 	$functionConfig | ConvertTo-Json -Depth 10 | Set-Content -Path "$($endpointFolder.FullName)/function.json"
 }
 #endregion Triggers

@@ -8,12 +8,13 @@ function Import-CsvBlob {
 		The rows it returns are pushed into the SQL output binding by the generated run.ps1.
 
 		All or nothing: if any row is invalid, the function throws and returns nothing.
-		The runtime then retries and finally moves the blob to the poison queue.
+		The wrapper then moves the blob to the failed container (BLOB_FAILED_CONTAINER) with the
+		reason in '<name>.error.txt'. Imported files go to BLOB_PROCESSED_CONTAINER.
 
 		Settings (app settings / environment variables):
 		- CSV_FILE_EXTENSIONS  Comma-separated list of accepted extensions. Default: .csv
 		- CSV_DELIMITER        ; , tab or auto. Default: auto (detected from the header line)
-		- CSV_ENCODING         utf-8 or windows-1252 (classic Excel "CSV (Trennzeichen-getrennt)"). Default: utf-8
+		- CSV_ENCODING         auto, utf-8, windows-1252 or utf-16. Default: auto (BOM, else UTF-8 if valid, else windows-1252)
 		- CSV_SOURCE_TIMEZONE  Time zone of timestamps without offset, e.g. Europe/Berlin. Default: UTC
 
 	.PARAMETER InputBlob
@@ -43,7 +44,7 @@ function Import-CsvBlob {
 	#region Settings
 	$extensions = ($env:CSV_FILE_EXTENSIONS, '.csv' | Where-Object { $_ } | Select-Object -First 1) -split ',' | ForEach-Object { $_.Trim() }
 	$delimiterSetting = $env:CSV_DELIMITER, 'auto' | Where-Object { $_ } | Select-Object -First 1
-	$encodingName = $env:CSV_ENCODING, 'utf-8' | Where-Object { $_ } | Select-Object -First 1
+	$encodingName = $env:CSV_ENCODING, 'auto' | Where-Object { $_ } | Select-Object -First 1
 	$timeZoneId = $env:CSV_SOURCE_TIMEZONE, 'UTC' | Where-Object { $_ } | Select-Object -First 1
 	#endregion Settings
 
@@ -56,8 +57,7 @@ function Import-CsvBlob {
 	}
 
 	$timeZone = [TimeZoneInfo]::FindSystemTimeZoneById($timeZoneId)
-	$encoding = [System.Text.Encoding]::GetEncoding($encodingName)
-	$text = $encoding.GetString($InputBlob).TrimStart([char]0xFEFF)
+	$text = ConvertTo-CsvText -Bytes $InputBlob -Encoding $encodingName -BlobName $BlobName
 	if ([string]::IsNullOrWhiteSpace($text)) {
 		Write-Warning "'$BlobName' is empty."
 		return

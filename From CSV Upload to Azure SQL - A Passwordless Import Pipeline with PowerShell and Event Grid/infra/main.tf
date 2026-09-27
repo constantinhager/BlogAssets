@@ -86,6 +86,20 @@ resource "azurerm_storage_container" "incoming" {
   container_access_type = "private"
 }
 
+# Handled files leave the input container. Separate containers, so the moves don't match the
+# Event Grid subject filter and trigger the function again.
+resource "azurerm_storage_container" "processed" {
+  name                  = var.processed_container_name
+  storage_account_id    = azurerm_storage_account.data.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "failed" {
+  name                  = var.failed_container_name
+  storage_account_id    = azurerm_storage_account.data.id
+  container_access_type = "private"
+}
+
 # ---------------------------------------------------------------------------
 # Function App (Flex Consumption, PowerShell, system-assigned identity)
 # ---------------------------------------------------------------------------
@@ -147,6 +161,10 @@ resource "azurerm_function_app_flex_consumption" "func" {
     # queueServiceUri is required for blob triggers (poison-blob queue).
     "DataStorage__blobServiceUri"  = azurerm_storage_account.data.primary_blob_endpoint
     "DataStorage__queueServiceUri" = azurerm_storage_account.data.primary_queue_endpoint
+
+    # Where the blob trigger wrapper moves handled files (Move-TriggerBlob). Unset = leave them.
+    "BLOB_PROCESSED_CONTAINER" = azurerm_storage_container.processed.name
+    "BLOB_FAILED_CONTAINER"    = azurerm_storage_container.failed.name
 
     # SQL output binding, authenticates with the app's system-assigned identity.
     "SqlConnectionString" = local.sql_conn

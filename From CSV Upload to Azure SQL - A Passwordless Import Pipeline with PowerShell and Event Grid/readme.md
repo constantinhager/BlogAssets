@@ -1,6 +1,6 @@
 ﻿# BlobToSql: CSV blob → Azure Function (PowerShell, Flex Consumption) → Azure SQL
 
-A CSV file lands in the `incoming` container. Event Grid calls the function. The function parses the file and upserts the rows into `dbo.ImportedRecord`. All authentication uses the Function App's system-assigned managed identity. There are no keys or passwords.
+A CSV file lands in the `incoming` container. Event Grid calls the function. The function parses the file and upserts the rows into `dbo.ImportedRecord`. Afterwards it moves the file to the `processed` container, or to `failed` if the file was rejected. All authentication uses the Function App's system-assigned managed identity. There are no keys or passwords.
 
 ![Blob-to-SQL architecture: GitHub Actions deploys with OIDC; CSV upload, Event Grid, Function App and Azure SQL in one resource group](assets/blob-to-sql-infrastructure.svg)
 
@@ -39,10 +39,11 @@ MeasuredAt;DeviceId;Value
 
 - **Columns are matched by header name.** Column order doesn't matter. Extra columns are ignored with a warning. Missing required columns fail the file.
 - **Delimiter** `auto` detects `;`, `,` or tab from the header line. Quoted fields (`"a;b"`) work.
-- **Encoding** is `utf-8` by default, with or without BOM. Use `windows-1252` for classic Excel "CSV (Trennzeichen-getrennt)" exports.
+- **Encoding** is detected by default (`CSV_ENCODING = auto`). A byte order mark decides first (UTF-8, or UTF-16 from Excel "Unicode Text"). Without a BOM, valid UTF-8 is read as UTF-8 and anything else as `windows-1252`, the classic Excel "CSV (Trennzeichen-getrennt)" export. This works because umlauts in `windows-1252` are single bytes (`ü` = `0xFC`), which are never valid UTF-8. With a fixed encoding, bytes that don't fit become `?` in SQL, and the function logs a warning.
 - **Decimals.** `21.5`, `21,5`, `1.234,75` and `1,234.75` all work, because the last separator is taken as the decimal separator. This makes `1,234` ambiguous: it is read as 1.234.
 - **Timestamps.** ISO 8601 and `dd.MM.yyyy [HH:mm[:ss]]` are supported. Values with `Z` or an offset are converted to UTC. Values without an offset are read in `CSV_SOURCE_TIMEZONE` (default `UTC`) and stored as UTC.
-- **All or nothing.** Any invalid value fails the whole file and nothing is written. After the retries the blob goes to the `webjobs-blobtrigger-poison` queue in the data storage account.
+- **All or nothing.** Any invalid value fails the whole file and nothing is written. The file moves to the `failed` container, and `<name>.error.txt` next to it lists the first 20 errors. There are no retries, because the same content would fail again. The function logs an error, but the run counts as successful.
+- **Imported files move to `processed`.** A file with the same name there is overwritten, just like its rows in SQL. Empty files and files with a header only also end up there.
 - **Idempotent.** The primary key is (`SourceBlob`, `RowNumber`), and the SQL binding does a MERGE. Processing a file twice updates the rows. This matters because Event Grid delivers at least once.
 
 To change the columns, edit `schema.ps1` and `database/BlobToSqlDb/dbo/Tables/ImportedRecord.sql` together.
@@ -119,6 +120,15 @@ $upload = @(
     '--name', 'sample.csv'
 )
 az storage blob upload @upload
+
+# A few seconds later the file is in 'processed' (or in 'failed', with sample.csv.error.txt)
+$list = @(
+    '--auth-mode', 'login'
+    '--account-name', '<data storage account>'
+    '--container-name', 'processed'
+    '--query', '[].name'
+)
+az storage blob list @list
 ```
 
 ## Clean up
@@ -175,7 +185,7 @@ Local preview without changing anything:
 
 ## Changes to the template
 
-1. **New trigger kind `blobTrigger`.** This adds `build/functionBlob/*`, a `BlobTrigger` section in `build.config.psd1`, and a matching region in `psf-build.ps1`. The wrapper passes `-InputBlob`, `-BlobName` and `-TriggerMetadata` only when the command declares them. It pushes the command output to the SQL output binding and rethrows errors, so the runtime retries and poisons the blob.
+1. **New trigger kind `blobTrigger`.** This adds `build/functionBlob/*`, a `BlobTrigger` section in `build.config.psd1`, and a matching region in `psf-build.ps1`. The wrapper passes `-InputBlob`, `-BlobName` and `-TriggerMetadata` only when the command declares them. It pushes the command output to the SQL output binding. If `BLOB_PROCESSED_CONTAINER` and `BLOB_FAILED_CONTAINER` are set, it moves handled files there with `Move-TriggerBlob`. Without them it leaves the files in place and rethrows errors, so the runtime retries and poisons the blob. The wrapper imports the module explicitly: with auto-loading, parallel invocations in a fresh worker race, and some fail with "`Import-CsvBlob` is not recognized".
 2. **`FlexConsumption = $true`.** The build then disables managed dependencies in host.json.
 3. **`function/modules` renamed to `function/Modules`.** The PowerShell worker adds `<app root>/Modules` to `PSModulePath`, and Flex runs on Linux, so the folder name is case-sensitive. If you build on Windows, the zip ends up with a lowercase `modules` folder and the module is not found at runtime.
 4. **`psf-build.ps1` path fix.** `Modules/<name>/Functions` changed to `functions`. On Linux or macOS build agents the capital `F` made `FunctionsToExport` empty.
@@ -191,7 +201,8 @@ Not changed, but worth knowing: the template's `eventGridTrigger` wrapper looks 
 - **The `hidden-link: /app-insights-resource-id` tag is ignored** in Terraform. Azure adds it when Application Insights is connected. Without `ignore_changes`, every apply would update the app and write `AzureWebJobsStorage` again.
 - **SQL network.** `AllowAzureServices` (0.0.0.0) is there because Flex has no fixed outbound IPs without VNet integration. For production, use VNet integration and a private endpoint.
 - **Role propagation.** New role assignments can take a few minutes, so the first invocations may fail and then succeed on retry.
-- **Serverless SQL** (`GP_S_Gen5_*`) auto-pauses. The first write after a pause can fail with error 40613 and then succeed on retry.
+- **The move to `processed` happens before the SQL write.** The output binding writes after `run.ps1` returns, and it has no retries of its own. If that write fails, the runtime retries, but the file is no longer in `incoming`, so the retry does nothing. The run shows as failed in Application Insights. To import the file again, copy it from `processed` back to `incoming`. The import is idempotent.
+- **Serverless SQL** (`GP_S_Gen5_*`) auto-pauses. The first write after a pause fails with error 40613, and because of the move above, that file is not imported. The default SKU `Basic` doesn't pause. With serverless, set `auto_pause_delay_in_minutes = -1`, or copy such files back as described above.
 
 ---
 

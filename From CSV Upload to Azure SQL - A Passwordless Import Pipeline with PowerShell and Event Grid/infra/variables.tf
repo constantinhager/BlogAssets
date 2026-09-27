@@ -32,6 +32,18 @@ variable "input_container_name" {
   description = "Must match BlobTrigger.Path in build/build.config.psd1."
 }
 
+variable "processed_container_name" {
+  type        = string
+  default     = "processed"
+  description = "Imported files are moved here. Must differ from input_container_name."
+}
+
+variable "failed_container_name" {
+  type        = string
+  default     = "failed"
+  description = "Rejected files are moved here, with the reason in '<name>.error.txt'. Must differ from input_container_name."
+}
+
 variable "file_extensions" {
   type        = list(string)
   default     = [".csv"]
@@ -46,8 +58,8 @@ variable "csv_delimiter" {
 
 variable "csv_encoding" {
   type        = string
-  default     = "utf-8"
-  description = "utf-8 or windows-1252 (classic Excel CSV export)."
+  default     = "auto"
+  description = "auto (BOM, else UTF-8 if valid, else windows-1252), or fixed: utf-8, windows-1252, utf-16."
 }
 
 variable "csv_source_timezone" {
