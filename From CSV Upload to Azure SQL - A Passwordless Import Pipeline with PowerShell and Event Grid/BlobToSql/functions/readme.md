@@ -11,4 +11,4 @@ There are five subdirectories:
 + timerTrigger: Each function placed in this folder will be registered as a timer-triggered function endpoint.
 + nonPublished: Any function placed here will be exposed by the module, but not as a function endpoint.
 
-The function endpoints are generated while running build.ps1.
+The function endpoints are generated while running psf-build.ps1.

@@ -60,7 +60,7 @@ jobs:
 
       - name: Build function package (no publish)
         shell: pwsh
-        run: ./build/build.ps1
+        run: ./build/psf-build.ps1
 
       - uses: actions/setup-dotnet@v6
         with:
@@ -278,7 +278,7 @@ jobs:
       - name: Build + publish function code
         shell: pwsh
         working-directory: "From CSV Upload to Azure SQL - A Passwordless Import Pipeline with PowerShell and Event Grid"
-        run: ./build/build.ps1 -AppRg '${{ steps.tf.outputs.resource_group }}' -AppName '${{ steps.tf.outputs.function_app_name }}'
+        run: ./build/psf-build.ps1 -AppRg '${{ steps.tf.outputs.resource_group }}' -AppName '${{ steps.tf.outputs.function_app_name }}'
 
       - name: terraform apply (Event Grid subscription)
         if: steps.detect.outputs.deployed != 'true'

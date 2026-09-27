@@ -175,10 +175,10 @@ Local preview without changing anything:
 
 ## Changes to the template
 
-1. **New trigger kind `blobTrigger`.** This adds `build/functionBlob/*`, a `BlobTrigger` section in `build.config.psd1`, and a matching region in `build.ps1` and `psf-build.ps1`. The wrapper passes `-InputBlob`, `-BlobName` and `-TriggerMetadata` only when the command declares them. It pushes the command output to the SQL output binding and rethrows errors, so the runtime retries and poisons the blob.
+1. **New trigger kind `blobTrigger`.** This adds `build/functionBlob/*`, a `BlobTrigger` section in `build.config.psd1`, and a matching region in `psf-build.ps1`. The wrapper passes `-InputBlob`, `-BlobName` and `-TriggerMetadata` only when the command declares them. It pushes the command output to the SQL output binding and rethrows errors, so the runtime retries and poisons the blob.
 2. **`FlexConsumption = $true`.** The build then disables managed dependencies in host.json.
 3. **`function/modules` renamed to `function/Modules`.** The PowerShell worker adds `<app root>/Modules` to `PSModulePath`, and Flex runs on Linux, so the folder name is case-sensitive. If you build on Windows, the zip ends up with a lowercase `modules` folder and the module is not found at runtime.
-4. **`build.ps1` path fix.** `Modules/<name>/Functions` changed to `functions`. On Linux or macOS build agents the capital `F` made `FunctionsToExport` empty.
+4. **`psf-build.ps1` path fix.** `Modules/<name>/Functions` changed to `functions`. On Linux or macOS build agents the capital `F` made `FunctionsToExport` empty.
 5. **Publish on Flex uses `az functionapp deployment source config-zip`.** `Publish-AzWebApp` is not a documented deployment method for Flex Consumption.
 6. **`Azure.Function.Tools` commented out** in `requirements.psd1`. Only the http and eventGrid wrappers need it.
 7. **Typo fix** (`EventGridTrFigger`) in the Event Grid region.
