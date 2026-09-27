@@ -141,6 +141,7 @@ az storage blob list @list
 - the SQL admin group
 - the app registration
 - the GitHub environment and **all** repository variables, including ones other workflows set
+- with `-RemoveWorkflowRuns`: the run history of `csv-upload-to-azure-sql.yml` on GitHub, with logs and artifacts (runs still in progress are skipped)
 
 Resource provider registrations are not removed.
 
@@ -153,6 +154,7 @@ $cleanup = @{
 }
 ./scripts/Remove-BlobToSqlDeployment.ps1 @cleanup -WhatIf   # preview
 ./scripts/Remove-BlobToSqlDeployment.ps1 @cleanup           # asks before each deletion
+./scripts/Remove-BlobToSqlDeployment.ps1 @cleanup -RemoveWorkflowRuns   # also deletes the workflow runs
 ```
 
 ## Database project

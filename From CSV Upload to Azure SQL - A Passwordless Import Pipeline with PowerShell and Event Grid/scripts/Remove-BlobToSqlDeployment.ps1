@@ -18,6 +18,8 @@
     5. The app registration. This also deletes its service principal and federated credentials.
     6. GitHub: the environment <Environment> and ALL repository variables of <Repository>,
        including variables that other workflows set.
+    7. With -RemoveWorkflowRuns: all runs of the workflow <WorkflowFile>, with their logs and
+       artifacts. Runs that are still in progress are skipped.
 
     Not removed: resource provider registrations (shared by the whole subscription).
 
@@ -47,6 +49,12 @@
 .PARAMETER StateResourceGroup
     Resource group of the Terraform state storage account. Defaults to rg-tfstate.
 
+.PARAMETER RemoveWorkflowRuns
+    Also delete the run history of the workflow <WorkflowFile> on GitHub. Asks once for all runs.
+
+.PARAMETER WorkflowFile
+    File name of the workflow whose runs -RemoveWorkflowRuns deletes. Defaults to csv-upload-to-azure-sql.yml.
+
 .EXAMPLE
     PS C:\> $cleanup = @{
                 Repository        = 'contoso/BlogAssets'
@@ -59,6 +67,16 @@
 
     Shows what would be removed. Run it again without WhatIf to remove it. Every deletion asks
     for confirmation; add Confirm = $false to skip the prompts.
+
+.EXAMPLE
+    PS C:\> $cleanup = @{
+                Repository         = 'contoso/BlogAssets'
+                SubscriptionId     = '<sub-id>'
+                RemoveWorkflowRuns = $true
+            }
+    PS C:\> ./scripts/Remove-BlobToSqlDeployment.ps1 @cleanup
+
+    Removes everything, including the run history of the deploy workflow on GitHub.
 #>
 #Requires -Version 7.2
 #Requires -Modules Az.Accounts, Az.Resources
@@ -89,7 +107,13 @@ param (
     $WorkloadTag = 'blob-to-sql',
 
     [string]
-    $StateResourceGroup = 'rg-tfstate'
+    $StateResourceGroup = 'rg-tfstate',
+
+    [switch]
+    $RemoveWorkflowRuns,
+
+    [string]
+    $WorkflowFile = 'csv-upload-to-azure-sql.yml'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -257,5 +281,40 @@ foreach ($name in $variableNames) {
     }
 }
 #endregion 6. GitHub
+
+#region 7. Workflow runs
+if ($RemoveWorkflowRuns) {
+    Write-Step "GitHub workflow runs of $WorkflowFile"
+    $runListArgs = @(
+        'run', 'list'
+        '--repo', $Repository
+        '--workflow', $WorkflowFile
+        '--limit', '1000'
+        '--json', 'databaseId,status'
+    )
+    $runs = @(gh @runListArgs | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh run list failed for $WorkflowFile in $Repository"
+    }
+    $running = @($runs | Where-Object status -NE 'completed')
+    $completed = @($runs | Where-Object status -EQ 'completed')
+    if ($running) {
+        Write-Warning "$($running.Count) run(s) still in progress, skipped. Cancel them or run the script again later."
+    }
+    if (-not $completed) {
+        Write-Host '    No completed runs'
+    } elseif ($PSCmdlet.ShouldProcess("$Repository : $WorkflowFile", "Delete $($completed.Count) workflow run(s) with logs and artifacts")) {
+        $failed = 0
+        foreach ($run in $completed) {
+            $null = gh api --method DELETE "repos/$Repository/actions/runs/$($run.databaseId)" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Could not delete run $($run.databaseId)"
+                $failed++
+            }
+        }
+        Write-Host "    $($completed.Count - $failed) run(s) deleted"
+    }
+}
+#endregion 7. Workflow runs
 
 Write-Step 'Done'
