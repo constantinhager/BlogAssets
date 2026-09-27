@@ -137,14 +137,11 @@ resource "azurerm_function_app_flex_consumption" "func" {
   }
 
   app_settings = {
-    # Workaround: with SystemAssignedIdentity the provider still writes a key-based
-    # AzureWebJobsStorage value (empty key). Blank it so the identity-based form is used.
-    # Same workaround as Microsoft's Flex Terraform sample.
-    "AzureWebJobsStorage" = ""
-    # Service URIs instead of __accountName: the blob trigger keeps receipts and an internal
-    # queue in host storage, and the Storage extension can't build its clients from accountName.
-    "AzureWebJobsStorage__blobServiceUri"  = azurerm_storage_account.host.primary_blob_endpoint
-    "AzureWebJobsStorage__queueServiceUri" = azurerm_storage_account.host.primary_queue_endpoint
+    # Identity-based host storage. The blob trigger also keeps receipts and an internal queue here.
+    # AzureWebJobsStorage itself must not exist: the provider writes a keyless connection string
+    # into it on every create/update (issue #29693), and any value, even "", makes the Storage
+    # extension ignore __accountName. The deploy workflow deletes it after terraform apply.
+    "AzureWebJobsStorage__accountName" = azurerm_storage_account.host.name
 
     # Identity-based connection for the blob trigger ("connection": "DataStorage").
     # queueServiceUri is required for blob triggers (poison-blob queue).
@@ -162,6 +159,14 @@ resource "azurerm_function_app_flex_consumption" "func" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    # Azure adds this tag itself when Application Insights is connected. Without ignoring it, every
+    # apply updates the app, and each update writes AzureWebJobsStorage again (see app_settings).
+    ignore_changes = [
+      tags["hidden-link: /app-insights-resource-id"],
+    ]
+  }
 }
 
 # Host storage: deployment package + runtime state

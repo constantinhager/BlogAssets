@@ -187,7 +187,8 @@ Not changed, but worth knowing: the template's `eventGridTrigger` wrapper looks 
 
 ## Notes
 
-- **`AzureWebJobsStorage = ""`** in Terraform works around azurerm provider issue #29693. With managed-identity storage, the provider still writes a key-based value. Microsoft's Flex Terraform sample uses the same workaround.
+- **The deploy workflow deletes `AzureWebJobsStorage` after `terraform apply`.** This works around azurerm provider issue #29693: with managed-identity storage, the provider still writes a keyless connection string into that setting on every create or update of the app. Microsoft's Flex Terraform sample overrides it with `""`, which is enough for HTTP triggers. The blob trigger also uses host storage, and the Storage extension treats any value, even an empty one, as a connection string. It then ignores `AzureWebJobsStorage__accountName`, the function fails indexing, and Event Grid's webhook validation gets HTTP 500. The setting therefore has to be absent, not empty.
+- **The `hidden-link: /app-insights-resource-id` tag is ignored** in Terraform. Azure adds it when Application Insights is connected. Without `ignore_changes`, every apply would update the app and write `AzureWebJobsStorage` again.
 - **SQL network.** `AllowAzureServices` (0.0.0.0) is there because Flex has no fixed outbound IPs without VNet integration. For production, use VNet integration and a private endpoint.
 - **Role propagation.** New role assignments can take a few minutes, so the first invocations may fail and then succeed on retry.
 - **Serverless SQL** (`GP_S_Gen5_*`) auto-pauses. The first write after a pause can fail with error 40613 and then succeed on retry.

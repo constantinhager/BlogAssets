@@ -256,6 +256,22 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # azurerm writes a keyless AzureWebJobsStorage connection string on every create/update of the
+      # app (provider issue #29693). Any value, even "", makes the blob trigger ignore
+      # AzureWebJobsStorage__accountName, so the function fails indexing and the webhook returns 500.
+      - name: Remove AzureWebJobsStorage connection string
+        run: |
+          rg='${{ steps.tf.outputs.resource_group }}'
+          app='${{ steps.tf.outputs.function_app_name }}'
+          present=$(az functionapp config appsettings list -g "$rg" -n "$app" \
+            --query "[?name=='AzureWebJobsStorage'].name" --output tsv)
+          if [ -n "$present" ]; then
+            az functionapp config appsettings delete -g "$rg" -n "$app" --setting-names AzureWebJobsStorage --output none
+            echo "Removed AzureWebJobsStorage from $app"
+          else
+            echo "AzureWebJobsStorage not set on $app"
+          fi
+
       - name: Open SQL firewall for this runner
         id: fw
         run: ../scripts/ci/Set-SqlFirewallRule.sh open "${{ steps.tf.outputs.resource_group }}" "${{ steps.tf.outputs.sql_server_fqdn }}"
