@@ -248,6 +248,14 @@ jobs:
           dotnet tool install --global microsoft.sqlpackage --version "$SQLPACKAGE_VERSION"
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
+      # The GitHub OIDC assertion az keeps from azure/login expires after 5 minutes, and terraform apply
+      # takes longer. Log in again, so az can still request new tokens.
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Open SQL firewall for this runner
         id: fw
         run: ../scripts/ci/Set-SqlFirewallRule.sh open "${{ steps.tf.outputs.resource_group }}" "${{ steps.tf.outputs.sql_server_fqdn }}"
@@ -270,6 +278,15 @@ jobs:
             AccessToken      = $token
           }
           ../scripts/Publish-Database.ps1 @publishParam
+
+      # Fresh OIDC assertion again: the database publish can take several minutes.
+      # Also runs when the publish failed, so the firewall rule below can still be removed.
+      - uses: azure/login@v3
+        if: always() && steps.fw.outcome == 'success'
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Close SQL firewall
         if: always() && steps.fw.outcome == 'success'
