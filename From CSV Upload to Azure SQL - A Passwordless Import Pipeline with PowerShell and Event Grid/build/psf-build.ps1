@@ -19,7 +19,19 @@ trap {
 	throw $_
 }
 
-Invoke-WebRequest 'https://raw.githubusercontent.com/PowershellFrameworkCollective/PSFramework.NuGet/refs/heads/master/bootstrap.ps1' -UseBasicParsing | Invoke-Expression
+# Install PSFramework.NuGet from the gallery; its bootstrap.ps1 only works on Windows
+$psfNuGetVersion = '0.9.16'
+if (-not (Get-Module -Name PSFramework.NuGet -ListAvailable | Where-Object Version -EQ $psfNuGetVersion)) {
+	$installParam = @{
+		Name            = 'PSFramework.NuGet'
+		RequiredVersion = $psfNuGetVersion
+		Repository      = 'PSGallery'
+		Scope           = 'CurrentUser'
+		Force           = $true
+	}
+	Install-Module @installParam
+}
+Import-Module -Name PSFramework.NuGet -RequiredVersion $psfNuGetVersion
 
 $workingDirectory = Split-Path $PSScriptRoot
 $config = Import-PowerShellDataFile -Path "$PSScriptRoot\build.config.psd1"
