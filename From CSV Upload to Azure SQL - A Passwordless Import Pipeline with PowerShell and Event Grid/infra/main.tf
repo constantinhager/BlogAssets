@@ -138,10 +138,13 @@ resource "azurerm_function_app_flex_consumption" "func" {
 
   app_settings = {
     # Workaround: with SystemAssignedIdentity the provider still writes a key-based
-    # AzureWebJobsStorage value (empty key). Blank it so the __accountName form is used.
+    # AzureWebJobsStorage value (empty key). Blank it so the identity-based form is used.
     # Same workaround as Microsoft's Flex Terraform sample.
-    "AzureWebJobsStorage"              = ""
-    "AzureWebJobsStorage__accountName" = azurerm_storage_account.host.name
+    "AzureWebJobsStorage" = ""
+    # Service URIs instead of __accountName: the blob trigger keeps receipts and an internal
+    # queue in host storage, and the Storage extension can't build its clients from accountName.
+    "AzureWebJobsStorage__blobServiceUri"  = azurerm_storage_account.host.primary_blob_endpoint
+    "AzureWebJobsStorage__queueServiceUri" = azurerm_storage_account.host.primary_queue_endpoint
 
     # Identity-based connection for the blob trigger ("connection": "DataStorage").
     # queueServiceUri is required for blob triggers (poison-blob queue).
@@ -165,6 +168,14 @@ resource "azurerm_function_app_flex_consumption" "func" {
 resource "azurerm_role_assignment" "func_host_blob" {
   scope                = azurerm_storage_account.host.id
   role_definition_name = "Storage Blob Data Owner"
+  principal_id         = azurerm_function_app_flex_consumption.func.identity[0].principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Host storage: internal queue of the blob trigger
+resource "azurerm_role_assignment" "func_host_queue" {
+  scope                = azurerm_storage_account.host.id
+  role_definition_name = "Storage Queue Data Contributor"
   principal_id         = azurerm_function_app_flex_consumption.func.identity[0].principal_id
   principal_type       = "ServicePrincipal"
 }
