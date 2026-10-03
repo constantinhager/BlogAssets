@@ -10,6 +10,11 @@
 	   - pushes to the main branch           repo:<org>/<repo>:ref:refs/heads/main
 	   - pull requests                       repo:<org>/<repo>:pull_request
 	   - the GitHub environment (deployment) repo:<org>/<repo>:environment:<env>
+
+	   If the repository uses immutable IDs in the OIDC subject claim, pass -GitHubOrganizationId and
+	   -GitHubRepositoryId, or let the script look them up with the GitHub CLI (-ResolveGitHubId).
+	   The subjects then look like repo:<org>@<orgId>/<repo>@<repoId>:pull_request.
+	   A credential with the same name but another subject is updated, so re-running fixes old credentials.
 	3. Resource provider registrations (Microsoft.Maintenance, Microsoft.HybridCompute, ...)
 	4. A storage account + container for the Terraform state (Entra ID auth only, no shared keys)
 	5. Role assignments for the service principal:
@@ -32,6 +37,21 @@
 
 .PARAMETER GitHubRepository
 	Repository name.
+
+.PARAMETER GitHubOrganizationId
+	Numeric ID of the GitHub user or organization (owner ID). Use it together with GitHubRepositoryId when the
+	OIDC subject claim contains immutable IDs. Without it, Entra ID rejects the token with
+	AADSTS700213 (no matching federated identity record).
+	Find it with: gh api repos/<org>/<repo> --jq .owner.id
+
+.PARAMETER GitHubRepositoryId
+	Numeric ID of the repository. Use it together with GitHubOrganizationId.
+	Find it with: gh api repos/<org>/<repo> --jq .id
+
+.PARAMETER ResolveGitHubId
+	Look up the owner ID and the repository ID with the GitHub CLI (gh api repos/<org>/<repo>) instead of
+	passing them. The GitHub CLI must be installed and signed in (gh auth login). The owner and repository
+	names are taken from the GitHub response, so their casing matches the OIDC subject.
 
 .PARAMETER SubscriptionId
 	Target subscription. Defaults to the current Az context subscription.
@@ -86,10 +106,33 @@
 
 	Uses a specific subscription, region and state storage account.
 	The GitHub environment and repository variables are not written; the script prints the values instead.
+
+.EXAMPLE
+	PS C:\> $identity = @{
+		GitHubOrganization = 'contoso'
+		GitHubRepository   = 'AzureUpdateManagerAutomation'
+		ResolveGitHubId    = $true
+		ConfigureGitHub    = $true
+	}
+	PS C:\> ./New-GitHubOidcDeploymentIdentity.ps1 @identity
+
+	Looks up the owner and repository ID with the GitHub CLI and creates (or updates) the federated credentials
+	with immutable-ID subjects, e.g. repo:contoso@123456/AzureUpdateManagerAutomation@987654321:pull_request.
+
+.EXAMPLE
+	PS C:\> $identity = @{
+		GitHubOrganization   = 'contoso'
+		GitHubRepository     = 'AzureUpdateManagerAutomation'
+		GitHubOrganizationId = 123456
+		GitHubRepositoryId   = 987654321
+	}
+	PS C:\> ./New-GitHubOidcDeploymentIdentity.ps1 @identity
+
+	Same result, with the IDs passed explicitly (no GitHub CLI needed).
 #>
 #Requires -Version 7.2
 #Requires -Modules Az.Accounts, Az.Resources, Az.Storage
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Default')]
 [OutputType([pscustomobject])]
 param (
 	[Parameter(Mandatory)]
@@ -101,6 +144,20 @@ param (
 	[ValidatePattern('^[A-Za-z0-9._-]{1,100}$', ErrorMessage = "'{0}' is not a valid GitHub repository name.")]
 	[string]
 	$GitHubRepository,
+
+	[Parameter(ParameterSetName = 'ImmutableSubject', Mandatory)]
+	[ValidateRange(1, [long]::MaxValue)]
+	[long]
+	$GitHubOrganizationId,
+
+	[Parameter(ParameterSetName = 'ImmutableSubject', Mandatory)]
+	[ValidateRange(1, [long]::MaxValue)]
+	[long]
+	$GitHubRepositoryId,
+
+	[Parameter(ParameterSetName = 'LookupImmutableSubject', Mandatory)]
+	[switch]
+	$ResolveGitHubId,
 
 	[Parameter()]
 	[ValidatePattern('^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$', ErrorMessage = "'{0}' is not a valid subscription ID (GUID).")]
@@ -279,8 +336,23 @@ $tenantId = $context.Tenant.Id
 if (-not $StateStorageAccountName) {
 	$StateStorageAccountName = 'sttfstate' + -join ((97..122) + (48..57) | Get-Random -Count 6 | ForEach-Object { [char]$_ })
 }
+if ($ResolveGitHubId) {
+	if (-not (Get-Command gh -ErrorAction Ignore)) { throw 'GitHub CLI (gh) not found. Install it or pass -GitHubOrganizationId and -GitHubRepositoryId.' }
+	$repositoryJson = gh api "repos/$GitHubOrganization/$GitHubRepository"
+	if ($LASTEXITCODE -ne 0) { throw "Could not read repos/$GitHubOrganization/$GitHubRepository with the GitHub CLI. Run 'gh auth login' and check the names." }
+	$repositoryInfo = $repositoryJson | ConvertFrom-Json
+	$GitHubOrganization = $repositoryInfo.owner.login
+	$GitHubRepository = $repositoryInfo.name
+	$GitHubOrganizationId = $repositoryInfo.owner.id
+	$GitHubRepositoryId = $repositoryInfo.id
+}
 $repoFullName = "$GitHubOrganization/$GitHubRepository"
-Write-Host "Tenant: $tenantId | Subscription: $SubscriptionId | Repository: $repoFullName"
+# The OIDC subject either carries the names only, or the names plus the immutable numeric IDs.
+$repoSubject = "repo:$repoFullName"
+if ($PSCmdlet.ParameterSetName -in 'ImmutableSubject', 'LookupImmutableSubject') {
+	$repoSubject = "repo:$GitHubOrganization@$GitHubOrganizationId/$GitHubRepository@$GitHubRepositoryId"
+}
+Write-Host "Tenant: $tenantId | Subscription: $SubscriptionId | Repository: $repoFullName | Subject prefix: $repoSubject"
 #endregion Context
 
 #region 1. App registration + service principal
@@ -303,14 +375,25 @@ else { Write-Host "  [ok] service principal $($sp.Id) (exists)" }
 #region 2. Federated identity credentials
 Write-Host "`n[2/6] Federated identity credentials"
 $desired = @(
-	@{ name = 'github-branch-main'; subject = "repo:$($repoFullName):ref:refs/heads/main"; description = 'Pushes to main' }
-	@{ name = 'github-pull-request'; subject = "repo:$($repoFullName):pull_request"; description = 'Pull requests (terraform plan)' }
-	@{ name = "github-env-$GitHubEnvironment"; subject = "repo:$($repoFullName):environment:$GitHubEnvironment"; description = "GitHub environment '$GitHubEnvironment' (apply / deploy)" }
+	@{ name = 'github-branch-main'; subject = "$($repoSubject):ref:refs/heads/main"; description = 'Pushes to main' }
+	@{ name = 'github-pull-request'; subject = "$($repoSubject):pull_request"; description = 'Pull requests (terraform plan)' }
+	@{ name = "github-env-$GitHubEnvironment"; subject = "$($repoSubject):environment:$GitHubEnvironment"; description = "GitHub environment '$GitHubEnvironment' (apply / deploy)" }
 )
-$existing = Get-AzADAppFederatedCredential -ApplicationObjectId $app.Id
+$existing = @(Get-AzADAppFederatedCredential -ApplicationObjectId $app.Id)
 foreach ($credential in $desired) {
-	if ($existing.Subject -contains $credential.subject) {
+	$sameName = $existing | Where-Object Name -eq $credential.name | Select-Object -First 1
+	if ($sameName -and $sameName.Subject -eq $credential.subject) {
 		Write-Host "  [ok] $($credential.subject) (exists)"
+		continue
+	}
+	if ($sameName) {
+		# Credential names are unique per app: fix the subject of the existing one instead of creating a duplicate
+		$null = Update-AzADAppFederatedCredential -ApplicationObjectId $app.Id -FederatedCredentialId $sameName.Id -Subject $credential.subject
+		Write-Host "  [update] $($credential.name): $($sameName.Subject) -> $($credential.subject)"
+		continue
+	}
+	if ($existing.Subject -contains $credential.subject) {
+		Write-Host "  [ok] $($credential.subject) (exists under another name)"
 		continue
 	}
 	$null = New-AzADAppFederatedCredential -ApplicationObjectId $app.Id -Name $credential.name -Issuer 'https://token.actions.githubusercontent.com' -Subject $credential.subject -Audience 'api://AzureADTokenExchange' -Description $credential.description
