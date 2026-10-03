@@ -95,13 +95,9 @@ variable "sample_exclusions" {
     reason = string
   }))
   default = {
-    "Global/KB5034439" = {
-      title  = "2024-01 Security Update for Windows Server 2022 (WinRE)"
-      reason = "Example: fails with 0x80070643 when the recovery partition is too small"
-    }
-    "Wave1/KB890830" = {
-      title  = "Windows Malicious Software Removal Tool"
-      reason = "Example: group-specific exclusion for UpdateGroup=Wave1"
+    "Global/KB5122871" = {
+      title  = "2026-09 Security Update for Windows Server 2025"
+      reason = "Example: RDS BUG"
     }
   }
 }

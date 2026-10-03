@@ -36,7 +36,6 @@ resource "azurerm_public_ip" "nat" {
   resource_group_name = azurerm_resource_group.this.name
   allocation_method   = "Static"
   sku                 = "Standard"
-  zones               = ["1"] # must match the zone of the NAT gateway
   tags                = var.tags
 }
 
@@ -45,7 +44,6 @@ resource "azurerm_nat_gateway" "this" {
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   sku_name            = "Standard"
-  zones               = ["1"]
   tags                = var.tags
 }
 
