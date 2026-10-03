@@ -16,8 +16,9 @@ resource "azurerm_role_definition" "update_manager_operator" {
       "Microsoft.Compute/virtualMachines/assessPatches/action",
       "Microsoft.Compute/virtualMachines/installPatches/action",
       "Microsoft.Compute/locations/operations/read",
-      "Microsoft.Compute/virtualMachines/patchAssessmentResults/read",
-      "Microsoft.Compute/virtualMachines/patchAssessmentResults/softwarePatches/read",
+      # Note: the docs list ".../patchAssessmentResults/read"; the Compute provider only knows the "latest" variant
+      "Microsoft.Compute/virtualMachines/patchAssessmentResults/latest/read",
+      "Microsoft.Compute/virtualMachines/patchAssessmentResults/latest/softwarePatches/read",
       "Microsoft.Compute/virtualMachines/patchInstallationResults/read",
       "Microsoft.Compute/virtualMachines/patchInstallationResults/softwarePatches/read",
 
