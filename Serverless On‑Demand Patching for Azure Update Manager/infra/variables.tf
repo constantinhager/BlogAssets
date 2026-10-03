@@ -44,10 +44,21 @@ variable "update_tag_value" {
   default     = "Wave1"
 }
 
-variable "vm_size" {
-  description = "Size of the sample VM."
+variable "vm_disk_controller_type" {
+  description = "Disk controller of the sample VM. The v7 VM sizes only support NVMe (Windows Server 2025 images do), older sizes use SCSI."
   type        = string
-  default     = "Standard_B2s_v2"
+  default     = "NVMe"
+
+  validation {
+    condition     = contains(["NVMe", "SCSI"], var.vm_disk_controller_type)
+    error_message = "vm_disk_controller_type must be NVMe or SCSI."
+  }
+}
+
+variable "vm_size" {
+  description = "Size of the sample VM. Must support Trusted Launch (Gen 2) and be available in the subscription. Check with: Get-AzComputeResourceSku -Location <region>"
+  type        = string
+  default     = "Standard_D2s_v7"
 }
 
 variable "vm_admin_username" {

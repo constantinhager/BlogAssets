@@ -30,6 +30,7 @@ resource "azurerm_windows_virtual_machine" "sample" {
   location              = azurerm_resource_group.this.location
   resource_group_name   = azurerm_resource_group.this.name
   size                  = var.vm_size
+  disk_controller_type  = var.vm_disk_controller_type
   admin_username        = var.vm_admin_username
   admin_password        = random_password.vm_admin.result
   network_interface_ids = [azurerm_network_interface.vm.id]
