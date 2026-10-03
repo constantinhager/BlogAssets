@@ -1,0 +1,11 @@
+# Build output
+function-app/Function.zip
+function-app/publish/
+
+# Terraform
+infra/.terraform/
+infra/tfplan
+infra/*.tfstate*
+
+# Local Functions settings
+local.settings.json
