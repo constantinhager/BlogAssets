@@ -6,6 +6,11 @@ on:
     paths:
       - "Serverless On‑Demand Patching for Azure Update Manager/**"
       - ".github/workflows/serverless-on-demand-patching-aum.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Serverless On‑Demand Patching for Azure Update Manager/**"
+      - ".github/workflows/serverless-on-demand-patching-aum.yml"
   workflow_dispatch:
 
 # OIDC: GitHub issues a short-lived token, Entra ID trusts it via the federated credential.
