@@ -113,6 +113,7 @@
 	PS C:\> ./Invoke-UpdateManagerFunction.ps1 @call
 
 	One-time update without reboot, with a 3 hour window and an additional Windows classification.
+	KB5034441 is excluded for this run only, on top of the exclusion table.
 
 .EXAMPLE
 	PS C:\> $call = @{
@@ -128,7 +129,6 @@
 
 	Installs Critical + Security updates on exactly these two machines (no tag needed), minus the KBs from
 	the exclusion table ('Global' + 'Wave1'). Names that are not found are returned in 'NotFound'.
-	KB5034441 is excluded for this run only, on top of the exclusion table.
 
 .EXAMPLE
 	PS C:\> $call = @{
