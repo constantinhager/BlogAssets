@@ -52,9 +52,12 @@ function Get-UpdateMaintenanceConfiguration {
 		$configurations = Invoke-AumArmRequest -Path "/subscriptions/$subscription/providers/Microsoft.Maintenance/maintenanceConfigurations" -ApiVersion $script:ApiVersion.Maintenance -All
 
 		# Dynamic scopes live as configuration assignments on subscription level.
+		# Azure does not support listing them via ARM (404 NotImplemented), but Resource Graph exposes them.
+		# 'filter' is a reserved KQL keyword, so the property is read with bracket notation.
 		$assignments = @()
 		try {
-			$assignments = Invoke-AumArmRequest -Path "/subscriptions/$subscription/providers/Microsoft.Maintenance/configurationAssignments" -ApiVersion $script:ApiVersion.Maintenance -All
+			$assignmentQuery = "maintenanceresources | where type =~ 'microsoft.maintenance/configurationassignments' | project id, name, maintenanceConfigurationId = tostring(properties.maintenanceConfigurationId), scopeFilter = properties['filter']"
+			$assignments = @(Search-AumResourceGraph -Query $assignmentQuery -SubscriptionId $subscription)
 		}
 		catch { Write-Warning "Could not list configuration assignments in $($subscription): $_" }
 
@@ -64,8 +67,8 @@ function Get-UpdateMaintenanceConfiguration {
 			if ($configuration.name -notlike $Name) { continue }
 
 			$scopes = foreach ($assignment in $assignments) {
-				if ($assignment.properties.maintenanceConfigurationId -ne $configuration.id) { continue }
-				$tagSettings = $assignment.properties.filter.tagSettings.tags
+				if ($assignment.maintenanceConfigurationId -ne $configuration.id) { continue }
+				$tagSettings = $assignment.scopeFilter.tagSettings.tags
 				$tagText = if ($tagSettings) {
 					($tagSettings.PSObject.Properties | ForEach-Object { '{0}={1}' -f $_.Name, ($_.Value -join '|') }) -join '; '
 				}

@@ -62,4 +62,9 @@ resource "azurerm_function_app_flex_consumption" "this" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    # Azure adds this tag itself when Application Insights is linked; without this, every plan removes it again.
+    ignore_changes = [tags["hidden-link: /app-insights-resource-id"]]
+  }
 }

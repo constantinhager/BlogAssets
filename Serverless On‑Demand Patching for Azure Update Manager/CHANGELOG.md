@@ -32,3 +32,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unchanged.
 - Include the `error.details` of a failed ARM request in the exception
   message, so query parser failures show their line and token.
+- Stop Terraform from removing the `hidden-link: /app-insights-resource-id`
+  tag of the Function App on every apply. Azure sets this tag itself, so it is
+  now ignored via `lifecycle.ignore_changes`.
+- Fix `Get-UpdateMaintenanceConfiguration` logging `404 NotImplemented` and
+  returning no dynamic scopes: Azure does not support listing subscription-level
+  configuration assignments through ARM. The dynamic scopes are now read from
+  Azure Resource Graph (`maintenanceresources`).

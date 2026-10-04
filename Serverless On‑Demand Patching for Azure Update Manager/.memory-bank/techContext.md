@@ -37,6 +37,12 @@ source: repository evidence
   `az rest --method post --url .../providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01`
   to get the full `error.details` (parser line/token). Avoid reserved KQL
   keywords such as `kind` as column names.
+- Subscription-level `Microsoft.Maintenance/configurationAssignments` (dynamic
+  scopes) cannot be listed via ARM (404 NotImplemented, all API versions). Read
+  them from Resource Graph: `maintenanceresources | where type =~
+  'microsoft.maintenance/configurationassignments'`. `filter` is a reserved KQL
+  keyword; use `properties['filter']`. New rows appear in Resource Graph after
+  a delay of up to about a minute.
 
 ## Operations
 
