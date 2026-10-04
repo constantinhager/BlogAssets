@@ -19,3 +19,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Update the README and architecture diagram to show the RDP entry path through
   the public load balancer.
+- Redesign the architecture diagram layout: runtime lane on top, deployment
+  lane (Entra ID + GitHub) at the bottom, separate admin node for RDP, NSG on
+  the RDP path, maintenance configurations trigger Update Manager, legend, and
+  no overlapping labels or crossing arrows.
