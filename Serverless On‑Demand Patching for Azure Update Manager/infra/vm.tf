@@ -25,6 +25,12 @@ resource "azurerm_network_interface" "vm" {
   }
 }
 
+resource "azurerm_network_interface_nat_rule_association" "vm_rdp" {
+  network_interface_id  = azurerm_network_interface.vm.id
+  ip_configuration_name = "ipconfig1"
+  nat_rule_id           = azurerm_lb_nat_rule.vm_rdp.id
+}
+
 resource "azurerm_windows_virtual_machine" "sample" {
   name                  = local.names.vm
   location              = azurerm_resource_group.this.location

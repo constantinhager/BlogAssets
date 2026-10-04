@@ -66,7 +66,7 @@ def step(cx, cy, n, color):
 box(360, 90, 1250, 840, "Azure subscription", BLUE, "#F3F9FD")
 box(410, 130, 620, 770, "rg-aum-automation", BLUE, "#FFFFFF")
 box(440, 170, 570, 180, "Flex Consumption plan (FC1) - Linux", "#C19C00", "#FFFBEA")
-box(440, 420, 570, 180, "VNet - private subnet (no public IP, no inbound)", GREEN, "#F1FAF1", title_x=150)
+box(440, 420, 570, 180, "VNet - private subnet (no public IP on VM)", GREEN, "#F1FAF1", title_x=165)
 box(440, 680, 420, 180, "Storage account", PURPLE, "#F7F4FC", title_x=150)
 box(1070, 130, 300, 770, "Azure platform (ARM REST APIs)", GREY, "#FFFFFF", dash="6 4", title_color="#323130")
 box(1390, 690, 200, 200, "rg-aum-tfstate", BLUE, "#FFFFFF")
@@ -82,6 +82,10 @@ node(180, 945, "azure/identity/app-registrations.png", "App registration\nfedera
 
 node(560, 250, "azure/compute/function-apps.png", "Function App (PowerShell 7.6)\nPSModuleDevelopment template\nsystem-assigned Managed Identity",
      badge="azure/identity/managed-identities.png")
+parts.append(f'<rect x="470" y="455" width="170" height="90" rx="10" fill="#FFFFFF" stroke="{BLUE}" stroke-width="1.6"/>')
+parts.append(f'<text x="555" y="482" font-size="13" font-weight="600" fill="{BLUE}" text-anchor="middle">Public Load Balancer</text>')
+parts.append(f'<text x="555" y="500" font-size="12" fill="{GREY}" text-anchor="middle">frontend public IP</text>')
+parts.append(f'<text x="555" y="518" font-size="12" fill="{GREY}" text-anchor="middle">RDP NAT 3389 -&gt; 3389</text>')
 node(680, 500, "azure/networking/nat.png", "NAT gateway\noutbound for Windows Update")
 node(900, 500, "azure/compute/virtual-machine.png", "vm-aum-01\nWindows Server 2025\nUpdateGroup = Wave1")
 node(560, 760, "azure/storage/table-storage.png", "Table: UpdateExclusions\nPartitionKey: Global | TagValue\nRowKey: KB number")
@@ -104,6 +108,8 @@ edge([(216, 742), (345, 742), (345, 1000), (1490, 1000), (1490, 893)], PURPLE, "
 
 # ---------------------------------------------------------------- runtime edges
 edge([(216, 245), (522, 245)], BLUE, "HTTPS + function key", (292, 235), width=2.6)
+edge([(216, 280), (340, 280), (340, 500), (470, 500)], GREY, "RDP 3389", (286, 492), dashed=True, anchor="middle")
+edge([(640, 500), (780, 500), (780, 448), (900, 448), (900, 468)], GREY, "RDP", (806, 426))
 
 # 1: Resource Graph
 edge([(598, 238), (1180, 238)], BLUE, "find machines by tag (KQL)", (860, 228))

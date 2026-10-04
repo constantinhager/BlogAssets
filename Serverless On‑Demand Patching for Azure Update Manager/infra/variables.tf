@@ -73,6 +73,31 @@ variable "vm_image_sku" {
   default     = "2025-datacenter-g2"
 }
 
+variable "rdp_frontend_port" {
+  description = "Frontend port of the public load balancer NAT rule that forwards RDP to the sample VM."
+  type        = number
+  default     = 3389
+
+  validation {
+    condition     = var.rdp_frontend_port >= 1 && var.rdp_frontend_port <= 65535
+    error_message = "rdp_frontend_port must be between 1 and 65535."
+  }
+}
+
+variable "rdp_allowed_source_cidrs" {
+  description = "Source CIDR ranges allowed to reach the sample VM over RDP through the public load balancer. Restrict this in real deployments."
+  type        = list(string)
+  default     = ["*"]
+
+  validation {
+    condition = length(var.rdp_allowed_source_cidrs) > 0 && alltrue([
+      for prefix in var.rdp_allowed_source_cidrs :
+      prefix == "*" || can(cidrhost(prefix, 0))
+    ])
+    error_message = "rdp_allowed_source_cidrs must contain '*' or valid CIDR ranges."
+  }
+}
+
 variable "vnet_address_space" {
   description = "Address space of the sample VNet."
   type        = string
