@@ -44,6 +44,7 @@ source: repository evidence
   missing: machines are listed, assessment fields are empty.
 - Role changes reach Resource Graph within about a minute; test the deployed
   endpoint read-only with the function key from `listKeys`.
+- Subscription-level `Microsoft.Maintenance/configurationAssignments` (dynamic
   scopes) cannot be listed via ARM (404 NotImplemented, all API versions). Read
   them from Resource Graph: `maintenanceresources | where type =~
   'microsoft.maintenance/configurationassignments'`. `filter` is a reserved KQL
