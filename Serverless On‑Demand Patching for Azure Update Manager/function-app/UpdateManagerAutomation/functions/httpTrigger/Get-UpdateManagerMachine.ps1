@@ -22,6 +22,10 @@ function Get-UpdateManagerMachine {
 	.PARAMETER SubscriptionId
 		Optional list of subscriptions. Defaults to the AUM_SUBSCRIPTION_IDS app setting.
 
+	.NOTES
+		OtherUpdates is the number of all available updates that are neither Critical nor Security:
+		'other' on Linux, and UpdateRollup, FeaturePack, ServicePack, Definition, Tools and Updates on Windows.
+
 	.EXAMPLE
 		GET /api/Get-UpdateManagerMachine
 
@@ -73,13 +77,14 @@ $($filters -join "`n")
     patchassessmentresources
     | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
     | extend machineId = tostring(split(tolower(id), '/patchassessmentresults/')[0])
+    | extend counts = properties.availablePatchCountByClassification
     | project machineId,
         lastAssessment = todatetime(properties.lastModifiedDateTime),
         assessmentStatus = tostring(properties.status),
         rebootPending = tobool(properties.rebootPending),
-        criticalUpdates = toint(properties.availablePatchCountByClassification.critical),
-        securityUpdates = toint(properties.availablePatchCountByClassification.security),
-        otherUpdates = toint(properties.availablePatchCountByClassification.other)
+        criticalUpdates = toint(counts.critical),
+        securityUpdates = toint(counts.security),
+        otherUpdates = coalesce(toint(counts.other), 0) + coalesce(toint(counts.updateRollup), 0) + coalesce(toint(counts.featurePack), 0) + coalesce(toint(counts.servicePack), 0) + coalesce(toint(counts.definition), 0) + coalesce(toint(counts.tools), 0) + coalesce(toint(counts.updates), 0)
 ) on machineId
 | project-away machineId, machineId1
 | order by name asc
