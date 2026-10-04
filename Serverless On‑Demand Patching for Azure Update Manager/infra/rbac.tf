@@ -16,7 +16,10 @@ resource "azurerm_role_definition" "update_manager_operator" {
       "Microsoft.Compute/virtualMachines/assessPatches/action",
       "Microsoft.Compute/virtualMachines/installPatches/action",
       "Microsoft.Compute/locations/operations/read",
-      # Note: the docs list ".../patchAssessmentResults/read"; the Compute provider only knows the "latest" variant
+      # Note: the docs list ".../patchAssessmentResults/read", but the Compute provider only knows the "latest" variant,
+      # so that action cannot be listed on its own. Azure Resource Graph checks "<type>/read" before it returns the rows
+      # of the patchassessmentresources table, so the wildcard is needed to see the assessment results.
+      "Microsoft.Compute/virtualMachines/patchAssessmentResults/*",
       "Microsoft.Compute/virtualMachines/patchAssessmentResults/latest/read",
       "Microsoft.Compute/virtualMachines/patchAssessmentResults/latest/softwarePatches/read",
       "Microsoft.Compute/virtualMachines/patchInstallationResults/read",

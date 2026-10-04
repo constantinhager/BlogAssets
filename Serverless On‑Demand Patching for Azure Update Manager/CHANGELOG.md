@@ -35,6 +35,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Fix `Get-UpdateManagerMachine` returning empty assessment fields
+  (`LastAssessment`, `AssessmentStatus`, `RebootPending`, update counts). The
+  custom role of the Function App lacked the read permission that Azure
+  Resource Graph checks for the `patchassessmentresources` table. The role now
+  contains `Microsoft.Compute/virtualMachines/patchAssessmentResults/*`.
 - Fix `Get-UpdateManagerMachine` failing with `400 BadRequest`: the Resource
   Graph query used the reserved KQL keyword `kind` as a column name. The
   column is now `machineKind`; the `Kind` property of the response is

@@ -37,7 +37,13 @@ source: repository evidence
   `az rest --method post --url .../providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01`
   to get the full `error.details` (parser line/token). Avoid reserved KQL
   keywords such as `kind` as column names.
-- Subscription-level `Microsoft.Maintenance/configurationAssignments` (dynamic
+- Resource Graph only returns rows the caller may read, checked as
+  `<type>/read`. For `patchassessmentresources` the custom role therefore needs
+  the wildcard `Microsoft.Compute/virtualMachines/patchAssessmentResults/*`
+  (the plain `.../read` action is not a valid role action). Symptom when it is
+  missing: machines are listed, assessment fields are empty.
+- Role changes reach Resource Graph within about a minute; test the deployed
+  endpoint read-only with the function key from `listKeys`.
   scopes) cannot be listed via ARM (404 NotImplemented, all API versions). Read
   them from Resource Graph: `maintenanceresources | where type =~
   'microsoft.maintenance/configurationassignments'`. `filter` is a reserved KQL
