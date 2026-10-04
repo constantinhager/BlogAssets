@@ -22,3 +22,4 @@ Trim entries older than 90 days.
 2026-10-04 10:55 UTC | default | Fix Get-UpdateMaintenanceConfiguration dynamic scope listing via Resource Graph
 2026-10-04 11:10 UTC | default | Remove OperationUrl from patch operation responses; update blog
 2026-10-04 11:45 UTC | default | Add MachineName/ExclusionScope to Start-OneTimeUpdate; update docs and blog
+2026-10-04 12:05 UTC | default | Fix empty assessment fields: add patchAssessmentResults wildcard to custom role (live and Terraform)
