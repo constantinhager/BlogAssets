@@ -18,6 +18,9 @@ published architecture artifacts.
 - 2026-10-04: Added a Standard public load balancer + NAT rule for sample VM
   RDP access, documented the outputs in the README, and refreshed the
   architecture SVG/PNG.
+- 2026-10-04: Refined the architecture layout so the public load balancer uses
+  an official Azure icon and sits above the NAT gateway in the public traffic
+  path.
 
 ## Stable capabilities
 

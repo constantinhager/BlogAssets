@@ -19,7 +19,8 @@ architecture artifacts aligned with the Terraform design.
   inbound NAT rule, subnet NSG RDP rule, NIC NAT association, and RDP outputs.
 - The README documents the RDP access path and Terraform outputs.
 - The architecture source and rendered SVG/PNG now show the public load
-  balancer and RDP flow.
+  balancer with an official Azure icon, stacked above the NAT gateway, and the
+  RDP flow.
 
 ## Next step
 

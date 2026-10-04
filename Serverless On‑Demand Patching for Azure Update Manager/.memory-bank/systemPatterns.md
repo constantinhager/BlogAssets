@@ -16,6 +16,9 @@ source: repository evidence
   path and the allowed client ranges are both expressed in Terraform.
 - Keep [docs/architecture.py](../docs/architecture.py) as the diagram source
   and refresh both rendered artifacts when the topology changes.
+- Use official Azure architecture icons for public networking components in the
+  rendered topology, and place the public load balancer above the NAT gateway
+  when both participate in the same internet-facing path.
 
 ## Decisions
 
