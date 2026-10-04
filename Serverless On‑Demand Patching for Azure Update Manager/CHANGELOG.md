@@ -10,6 +10,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add the `MachineName` parameter to `Start-OneTimeUpdate`: pass a list of
+  machine names (or full resource IDs) to start the one-time update on exactly
+  these machines, with or without a tag. Machines selected by tag and by name
+  are updated once. Names that are not found are returned in `NotFound`.
+- Add the `ExclusionScope` parameter to `Start-OneTimeUpdate` to choose the
+  exclusion table partition when machines are selected by name.
 - Add a Standard public load balancer with an inbound NAT rule for RDP access
   to the sample Windows VM.
 - Add Terraform outputs for the sample VM RDP endpoint and local admin
@@ -17,6 +23,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Remove the `OperationUrl` property from the responses of
+  `Start-UpdateAssessment` and `Start-OneTimeUpdate`. The ARM operation URL
+  cannot be called without an ARM token, so it was of no use to the caller.
 - Update the README and architecture diagram to show the RDP entry path through
   the public load balancer.
 - Redesign the architecture diagram layout: runtime lane on top, deployment

@@ -15,8 +15,8 @@
 	Get-UpdateManagerMachine            TagName, TagValue, OsType, SubscriptionId
 	Get-UpdateMaintenanceConfiguration  Name, MaintenanceScope, SubscriptionId
 	Start-UpdateAssessment              TagName, TagValue, SubscriptionId
-	Start-OneTimeUpdate                 TagName, TagValue, RebootSetting, MaximumDuration, Classification,
-	                                    LinuxClassification, AdditionalExcludedKb, SubscriptionId
+	Start-OneTimeUpdate                 TagName, TagValue, MachineName, ExclusionScope, RebootSetting, MaximumDuration,
+	                                    Classification, LinuxClassification, AdditionalExcludedKb, SubscriptionId
 	New-UpdateMaintenanceConfiguration  Name, StartDateTime, RecurEvery, Duration, TimeZone, ExpirationDateTime,
 	                                    RebootSetting, Classification, LinuxClassification, ExcludedKb,
 	                                    ExclusionScope, TagName, TagValue, ResourceGroupName, SubscriptionId,
@@ -113,6 +113,21 @@
 	PS C:\> ./Invoke-UpdateManagerFunction.ps1 @call
 
 	One-time update without reboot, with a 3 hour window and an additional Windows classification.
+
+.EXAMPLE
+	PS C:\> $call = @{
+		FunctionAppName   = 'func-aum-x1y2z'
+		ResourceGroupName = 'rg-aum-automation'
+		Endpoint          = 'Start-OneTimeUpdate'
+		Parameters        = @{
+			MachineName    = @('vm-aum-01', 'vm-aum-02')
+			ExclusionScope = 'Wave1'
+		}
+	}
+	PS C:\> ./Invoke-UpdateManagerFunction.ps1 @call
+
+	Installs Critical + Security updates on exactly these two machines (no tag needed), minus the KBs from
+	the exclusion table ('Global' + 'Wave1'). Names that are not found are returned in 'NotFound'.
 	KB5034441 is excluded for this run only, on top of the exclusion table.
 
 .EXAMPLE

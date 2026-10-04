@@ -5,9 +5,9 @@ function Invoke-AumPatchOperation {
 
 	.DESCRIPTION
 		Both operations are long-running ARM operations.
-		ARM answers with 202 Accepted and a Location header to poll.
-		We do not wait for the result: an HTTP-triggered function has a hard response limit
-		of 230 seconds, an update run can take hours. The result shows up in Azure Update Manager.
+		ARM answers with 202 Accepted. We do not wait for the result: an HTTP-triggered function has a hard
+		response limit of 230 seconds, an update run can take hours. The result shows up in Azure Update Manager.
+		The ARM operation URL is not returned, because it cannot be called without an ARM token.
 
 		Machines that are not running (VM) or not connected (Arc) are skipped.
 
@@ -49,7 +49,6 @@ function Invoke-AumPatchOperation {
 		OsType        = $Machine.osType
 		State         = $Machine.state
 		Status        = $null
-		OperationUrl  = $null
 		Message       = $null
 	}
 
@@ -68,10 +67,8 @@ function Invoke-AumPatchOperation {
 		}
 		if ($Body) { $param.Body = $Body }
 
-		$response = Invoke-AumArmRequest @param
+		$null = Invoke-AumArmRequest @param
 		$result.Status = 'Accepted'
-		$result.OperationUrl = @($response.Headers['Location'])[0]
-		if (-not $result.OperationUrl) { $result.OperationUrl = @($response.Headers['Azure-AsyncOperation'])[0] }
 	}
 	catch {
 		$result.Status = 'Failed'
