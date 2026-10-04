@@ -24,3 +24,4 @@ Trim entries older than 90 days.
 2026-10-04 11:45 UTC | default | Add MachineName/ExclusionScope to Start-OneTimeUpdate; update docs and blog
 2026-10-04 12:05 UTC | default | Fix empty assessment fields: add patchAssessmentResults wildcard to custom role (live and Terraform)
 2026-10-04 13:15 UTC | default | Fix OtherUpdates empty on Windows (sum of non-critical/security classifications)
+2026-10-04 13:45 UTC | default | Blog: Calling it uses the Invoke-UpdateManagerFunction examples; repair script help and blog JSON
