@@ -110,6 +110,8 @@ function Invoke-AumArmRequest {
 			$errorCode = $content.error.code
 			$errorMessage = $content.error.message
 			if (-not $errorMessage) { $errorMessage = $content | ConvertTo-Json -Depth 5 -Compress }
+			# Resource Graph and others put the actual reason (e.g. ParserFailure line/token) into error.details
+			if ($content.error.details) { $errorMessage += " Details: $($content.error.details | ConvertTo-Json -Depth 5 -Compress)" }
 			throw "ARM request failed: $Method $uri -> $statusCode $errorCode $errorMessage"
 		}
 

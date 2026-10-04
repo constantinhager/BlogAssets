@@ -64,11 +64,11 @@ resources
 | extend osType = iff(type =~ 'microsoft.compute/virtualmachines', tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType))
 $($filters -join "`n")
 | extend machineId = tolower(id)
-| extend kind = iff(type =~ 'microsoft.compute/virtualmachines', 'AzureVM', 'ArcServer')
+| extend machineKind = iff(type =~ 'microsoft.compute/virtualmachines', 'AzureVM', 'ArcServer')
 | extend state = iff(type =~ 'microsoft.compute/virtualmachines', tostring(properties.extended.instanceView.powerState.code), tostring(properties.status))
 | extend patchSettings = iff(osType =~ 'windows', properties.osProfile.windowsConfiguration.patchSettings, properties.osProfile.linuxConfiguration.patchSettings)
 | extend patchMode = tostring(patchSettings.patchMode), assessmentMode = tostring(patchSettings.assessmentMode)
-| project machineId, id, name, kind, osType, state, patchMode, assessmentMode, resourceGroup, subscriptionId, location, tags
+| project machineId, id, name, machineKind, osType, state, patchMode, assessmentMode, resourceGroup, subscriptionId, location, tags
 | join kind=leftouter (
     patchassessmentresources
     | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
@@ -92,7 +92,7 @@ $($filters -join "`n")
 	foreach ($machine in $machines) {
 		[pscustomobject]@{
 			Name             = $machine.name
-			Kind             = $machine.kind
+			Kind             = $machine.machineKind
 			OsType           = $machine.osType
 			State            = $machine.state
 			PatchMode        = $machine.patchMode

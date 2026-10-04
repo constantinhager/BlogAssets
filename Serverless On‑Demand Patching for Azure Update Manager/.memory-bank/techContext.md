@@ -33,3 +33,17 @@ source: repository evidence
 - Use `terraform fmt -check -recursive`, `terraform init -backend=false`, and
   `terraform validate` for infrastructure changes.
 - Verify diagram updates by checking the SVG labels and re-rendering the PNG.
+- Test Resource Graph queries before shipping: run the KQL with
+  `az rest --method post --url .../providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01`
+  to get the full `error.details` (parser line/token). Avoid reserved KQL
+  keywords such as `kind` as column names.
+
+## Operations
+
+- The Terraform state (`sttfstateblogassets`/`tfstate` in `rg-aum-tfstate`) is
+  Entra ID only. Reading outputs such as `sample_vm_rdp_password` needs
+  *Storage Blob Data Reader* on that storage account; grant it temporarily and
+  remove it afterwards. Never write the password to files, docs, or the blog.
+- The blog post lives outside this repository
+  (`Downloads\AzureUpdateManagerAutomation\...\blog`) and must be kept in sync
+  with `docs/architecture.png`, the sample exclusions, and the workflow.
