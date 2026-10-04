@@ -21,3 +21,4 @@ Trim entries older than 90 days.
 2026-10-04 10:40 UTC | default | Ignore Azure-managed hidden-link app-insights tag on the Function App
 2026-10-04 10:55 UTC | default | Fix Get-UpdateMaintenanceConfiguration dynamic scope listing via Resource Graph
 2026-10-04 11:10 UTC | default | Remove OperationUrl from patch operation responses; update blog
+2026-10-04 11:45 UTC | default | Add MachineName/ExclusionScope to Start-OneTimeUpdate; update docs and blog

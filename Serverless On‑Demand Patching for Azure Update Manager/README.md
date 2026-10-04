@@ -11,13 +11,17 @@ Everything is deployed with **Terraform** and **GitHub Actions** (OIDC).
 | Endpoint | Method | What it does |
 |---|---|---|
 | `/api/Start-UpdateAssessment` | POST | "Check for updates" on all machines with a tag (`assessPatches`) |
-| `/api/Start-OneTimeUpdate` | POST | One-time update on all machines with a tag (`installPatches`). Excluded KBs come from Azure Table Storage |
+| `/api/Start-OneTimeUpdate` | POST | One-time update on all machines with a tag and/or on a list of machines by name (`installPatches`). Excluded KBs come from Azure Table Storage |
 | `/api/New-UpdateMaintenanceConfiguration` | POST | Create/update a maintenance configuration (scheduled patching), optional dynamic scope by tag |
 | `/api/Get-UpdateMaintenanceConfiguration` | GET/POST | List maintenance configurations incl. dynamic scopes |
 | `/api/Get-UpdateManagerMachine` | GET/POST | List all Azure VMs + Arc-enabled servers with their latest assessment |
 
 Parameters go into the JSON body or the query string (lists: JSON array or comma separated).
 Auth level: `function` (send `x-functions-key`).
+
+`Start-OneTimeUpdate` selects machines by tag (`TagName` + `TagValue`), by name (`MachineName`, e.g. `["vm-aum-01","vm-aum-02"]`), or both (each machine is updated once).
+A full resource ID in `MachineName` selects exactly one machine; names that are not found are returned in `NotFound`.
+Group-specific KB exclusions come from the partition named like `TagValue`, or like `ExclusionScope` when you select by name.
 
 ## Exclusion table (`UpdateExclusions`)
 
