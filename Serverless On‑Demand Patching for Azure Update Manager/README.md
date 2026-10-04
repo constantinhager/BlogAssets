@@ -47,7 +47,7 @@ function-app/                    generated with PSModuleDevelopment's AzureFunct
   UpdateManagerAutomation/
     functions/httpTrigger/       one file = one HTTP endpoint
     internal/functions/          REST helpers (token, ARM, Resource Graph, Table Storage)
-infra/                           Terraform (RG, VNet + NSG + NAT gateway, sample VM, storage + table, Log Analytics,
+infra/                           Terraform (RG, VNet + NSG + NAT gateway + public load balancer for RDP, sample VM, storage + table, Log Analytics,
                                  Application Insights, Flex Function App, custom role)
 scripts/
   New-GitHubOidcDeploymentIdentity.ps1   one-time bootstrap: Entra app + federated credentials + tfstate storage + RBAC
@@ -89,6 +89,20 @@ scripts/
    }
    ./scripts/Invoke-UpdateManagerFunction.ps1 @call
    ```
+
+## Sample VM access
+
+The sample VM still has no public IP. Terraform publishes RDP through a
+Standard public load balancer NAT rule on `var.rdp_frontend_port`
+(default `3389`) and opens the subnet NSG only for
+`var.rdp_allowed_source_cidrs` (default `["*"]`; restrict this in real
+deployments).
+
+```powershell
+terraform output -raw sample_vm_rdp_host
+terraform output -raw sample_vm_rdp_username
+terraform output -raw sample_vm_rdp_password
+```
 
 ## Remove everything
 

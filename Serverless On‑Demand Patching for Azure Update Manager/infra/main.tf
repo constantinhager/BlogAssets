@@ -23,6 +23,8 @@ locals {
     log_analytics   = "log-${var.prefix}-${local.suffix}"
     vnet            = "vnet-${var.prefix}"
     nat_gateway     = "ng-${var.prefix}"
+    rdp_public_ip   = "pip-${var.prefix}-rdp"
+    rdp_lb          = "lb-${var.prefix}-rdp"
     vm              = "vm-${var.prefix}-01"
   }
 }
