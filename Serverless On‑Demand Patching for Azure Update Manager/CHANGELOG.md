@@ -23,3 +23,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lane (Entra ID + GitHub) at the bottom, separate admin node for RDP, NSG on
   the RDP path, maintenance configurations trigger Update Manager, legend, and
   no overlapping labels or crossing arrows.
+
+### Fixed
+
+- Fix `Get-UpdateManagerMachine` failing with `400 BadRequest`: the Resource
+  Graph query used the reserved KQL keyword `kind` as a column name. The
+  column is now `machineKind`; the `Kind` property of the response is
+  unchanged.
+- Include the `error.details` of a failed ARM request in the exception
+  message, so query parser failures show their line and token.

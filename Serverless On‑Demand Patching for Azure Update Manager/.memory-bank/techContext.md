@@ -33,6 +33,10 @@ source: repository evidence
 - Use `terraform fmt -check -recursive`, `terraform init -backend=false`, and
   `terraform validate` for infrastructure changes.
 - Verify diagram updates by checking the SVG labels and re-rendering the PNG.
+- Test Resource Graph queries before shipping: run the KQL with
+  `az rest --method post --url .../providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01`
+  to get the full `error.details` (parser line/token). Avoid reserved KQL
+  keywords such as `kind` as column names.
 
 ## Operations
 
