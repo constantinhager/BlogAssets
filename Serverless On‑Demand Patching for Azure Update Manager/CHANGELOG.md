@@ -35,6 +35,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Fix `Get-UpdateManagerMachine` always returning an empty `OtherUpdates` for
+  Windows machines. Windows has no `other` classification, so the value is now
+  the sum of all updates that are neither Critical nor Security (`other` on
+  Linux; UpdateRollup, FeaturePack, ServicePack, Definition, Tools and Updates
+  on Windows).
 - Fix `Get-UpdateManagerMachine` returning empty assessment fields
   (`LastAssessment`, `AssessmentStatus`, `RebootPending`, update counts). The
   custom role of the Function App lacked the read permission that Azure
