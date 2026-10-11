@@ -1,0 +1,129 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/dotnet
+{
+    "name": "C# (.NET)",
+    // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+    "image": "mcr.microsoft.com/devcontainers/dotnet:2-10.0-noble",
+    "features": {
+        "ghcr.io/devcontainers/features/azure-cli:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    "containerEnv": {
+        "POWERSHELL_TELEMETRY_OPTOUT": "1",
+        "POWERSHELL_UPDATECHECK": "Off"
+    },
+    // Use 'postCreateCommand' to run commands after the container is created.
+    "postCreateCommand": "/usr/bin/pwsh -NoLogo -NoProfile -File .devcontainer/postCreate.ps1",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-vscode.powershell",
+                "pspester.pester-test",
+                "usernamehw.errorlens",
+                "tylerleonhardt.vscode-inline-values-powershell",
+                "ironmansoftware.powershellprotools",
+                "santacodes.santacodes-region-viewer",
+                "vscode-icons-team.vscode-icons",
+                "editorconfig.editorconfig",
+                "eamodio.gitlens"
+            ],
+            "settings": {
+                "editor.tabCompletion": "on",
+                "editor.formatOnSave": true,
+                "editor.formatOnType": true,
+                "editor.formatOnPaste": true,
+                "editor.bracketPairColorization.enabled": true,
+                "editor.guides.bracketPairs": true,
+                "editor.guides.bracketPairsHorizontal": true,
+                "editor.guides.highlightActiveBracketPair": true,
+                "editor.guides.highlightActiveIndentation": true,
+                "editor.guides.indentation": true,
+                "diffEditor.ignoreTrimWhitespace": false,
+                "files.autoSaveDelay": 1000,
+                "files.hotExit": "onExitAndWindowClose",
+                "files.defaultLanguage": "powershell",
+                "git.enableSmartCommit": true,
+                "git.confirmSync": false,
+                "git.autofetch": true,
+                "git.pruneOnFetch": true,
+                "git.mergeEditor": true,
+                "git.pullBeforeCheckout": true,
+                "git.decorations.enabled": true,
+                "workbench.startupEditor": "none",
+                "window.newWindowDimensions": "maximized",
+                "window.commandCenter": true,
+                "terminal.integrated.cursorBlinking": true,
+                "terminal.integrated.cursorStyle": "line",
+                "terminal.integrated.scrollback": 9999,
+                "launch": {
+                    "compounds": [],
+                    "configurations": [
+                        {
+                            "name": "PS: Interactive",
+                            "presentation": {
+                                "group": "Powershell"
+                            },
+                            "request": "launch",
+                            "type": "PowerShell"
+                        },
+                        {
+                            "cwd": "${file}",
+                            "name": "PS: Run",
+                            "presentation": {
+                                "group": "Powershell"
+                            },
+                            "request": "launch",
+                            "script": "${file}",
+                            "type": "PowerShell"
+                        },
+                        {
+                            "args": [
+                                "${command:SpecifyScriptArgs}"
+                            ],
+                            "cwd": "${file}",
+                            "name": "PS: Run w/ Args",
+                            "presentation": {
+                                "group": "Powershell"
+                            },
+                            "request": "launch",
+                            "script": "${file}",
+                            "type": "PowerShell"
+                        },
+                        {
+                            "args": [
+                                "${command:SpecifyScriptArgs}"
+                            ],
+                            "name": "PS: Pester",
+                            "presentation": {
+                                "group": "Powershell"
+                            },
+                            "request": "launch",
+                            "script": "Invoke-Pester",
+                            "type": "PowerShell"
+                        }
+                    ]
+                },
+                "workbench.tree.indent": 20,
+                "workbench.tree.renderIndentGuides": "always",
+                "workbench.iconTheme": "vscode-icons",
+                "vsicons.dontShowNewVersionMessage": true,
+                "powershell.buttons.showPanelMovementButtons": true,
+                "powershell.codeFormatting.autoCorrectAliases": true,
+                "powershell.codeFormatting.preset": "OTBS",
+                "powershell.codeFormatting.useConstantStrings": true,
+                "powershell.codeFormatting.useCorrectCasing": true,
+                "powershell.integratedConsole.suppressStartupBanner": true,
+                "powershell.pester.useLegacyCodeLens": false,
+                "powershell.promptToUpdatePowerShell": false,
+                "powershell.sideBar.CommandExplorerVisibility": false,
+                "powershell.powerShellDefaultVersion": "PowerShell",
+                "powershell.pester.codeLens": false,
+                "[powershell]": {
+                    "editor.semanticHighlighting.enabled": true,
+                    "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?"
+                }
+            }
+        }
+    },
+    "remoteUser": "vscode"
+}
