@@ -39,6 +39,7 @@
                 "editor.guides.highlightActiveIndentation": true,
                 "editor.guides.indentation": true,
                 "diffEditor.ignoreTrimWhitespace": false,
+                "files.autoSave": "afterDelay",
                 "files.autoSaveDelay": 1000,
                 "files.hotExit": "onExitAndWindowClose",
                 "files.defaultLanguage": "powershell",
