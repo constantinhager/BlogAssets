@@ -115,6 +115,10 @@ LABEL devcontainer.metadata='[{ \
             "extensions": [ \
                 "ms-vscode.powershell", \
                 "pspester.pester-test", \
+                "usernamehw.errorlens", \
+                "tylerleonhardt.vscode-inline-values-powershell", \
+                "ironmansoftware.powershellprotools", \
+                "santacodes.santacodes-region-viewer", \
                 "hashicorp.terraform", \
                 "redhat.ansible", \
                 "redhat.vscode-yaml", \
@@ -126,12 +130,25 @@ LABEL devcontainer.metadata='[{ \
                 "terminal.integrated.defaultProfile.linux": "pwsh", \
                 "powershell.codeFormatting.preset": "OTBS", \
                 "powershell.codeFormatting.useCorrectCasing": true, \
+                "powershell.codeFormatting.autoCorrectAliases": true, \
+                "powershell.codeFormatting.useConstantStrings": true, \
                 "powershell.scriptAnalysis.enable": true, \
+                "powershell.buttons.showPanelMovementButtons": true, \
+                "powershell.integratedConsole.suppressStartupBanner": true, \
+                "powershell.pester.useLegacyCodeLens": false, \
+                "powershell.pester.codeLens": false, \
+                "powershell.promptToUpdatePowerShell": false, \
+                "powershell.sideBar.CommandExplorerVisibility": false, \
+                "powershell.powerShellDefaultVersion": "PowerShell", \
                 "ansible.python.interpreterPath": "/opt/ansible/bin/python", \
                 "ansible.validation.lint.path": "/usr/local/bin/ansible-lint", \
                 "[terraform]": { \
                     "editor.defaultFormatter": "hashicorp.terraform", \
                     "editor.formatOnSave": true \
+                }, \
+                "[powershell]": { \
+                    "editor.semanticHighlighting.enabled": true, \
+                    "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:\u0027\",.<>/?" \
                 } \
             } \
         } \
