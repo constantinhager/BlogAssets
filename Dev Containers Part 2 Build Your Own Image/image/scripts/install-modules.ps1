@@ -28,12 +28,20 @@ $modules = @(
 	@{ Name = 'Microsoft.Graph.Authentication' }
 )
 
-# PSResourceGet ships with PowerShell 7.4 and newer
-Set-PSResourceRepository -Name PSGallery -Trusted
-
+# PSResourceGet ships with PowerShell 7.4 and newer.
+# No Set-PSResourceRepository: in a fresh image the repository store (~/.local/share/PSResourceGet)
+# does not exist yet and the cmdlet fails while resolving its parameters. Install-PSResource creates
+# the store itself, and -TrustRepository trusts PSGallery for this run only.
 foreach ($module in $modules) {
 	Write-Host "Installing $($module.Name) $($module.Version) ..."
-	Install-PSResource @module -Scope AllUsers -TrustRepository -AcceptLicense -Quiet
+	$install = @{
+		Repository      = 'PSGallery'
+		Scope           = 'AllUsers'
+		TrustRepository = $true
+		AcceptLicense   = $true
+		Quiet           = $true
+	}
+	Install-PSResource @module @install
 }
 
 Get-InstalledPSResource -Scope AllUsers |
