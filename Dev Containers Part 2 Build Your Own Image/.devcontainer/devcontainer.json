@@ -3,9 +3,9 @@
     "name": "DevOps",
 
     // The image from Part 2: PowerShell, Terraform, TFLint, Ansible, Azure CLI, kubectl, Helm and GitHub CLI
-    // are baked in. Replace acrdevcontainerx1y2z3 with your registry (terraform output -raw image).
+    // are baked in. Replace acrdevcontainery4zpbr with your registry (terraform output -raw image).
     // Pin a date tag (or the digest from the workflow summary) for reproducible builds, 'latest' to follow updates.
-    "image": "acrdevcontainerx1y2z3.azurecr.io/devcontainers/devops:latest",
+    "image": "acrdevcontainery4zpbr.azurecr.io/devcontainers/devops:latest",
 
     // The image brings its own VS Code extensions and settings (label devcontainer.metadata).
     // Everything below is merged on top of it - only what this repository needs in addition.
