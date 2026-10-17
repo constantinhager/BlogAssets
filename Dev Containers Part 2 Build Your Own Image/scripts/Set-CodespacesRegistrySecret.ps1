@@ -12,7 +12,7 @@
 
 	Terraform creates the token (codespaces-pull) with a scope map that can only read the image
 	repository - but without a password, so the password never lands in the Terraform state.
-	This script generates a password with an expiry date (New-AzContainerRegistryCredentials) and writes
+	This script generates a password with an expiry date (generateCredentials API) and writes
 	the three secrets as repository-level Codespaces secrets (gh secret set --app codespaces).
 
 	An ACR token has two passwords. Rotate without downtime by switching between them:
@@ -123,26 +123,36 @@ if (-not $PSCmdlet.ShouldProcess("$server, token $TokenName", "Generate $Passwor
 	return
 }
 
-# -Name selects the slot (password1 / password2). The result contains the user name and the new password.
-$generate = @{
-	RegistryName      = $RegistryName
-	ResourceGroupName = $ResourceGroupName
-	TokenId           = $token.Id
-	Name              = $PasswordName
-	Expiry            = (Get-Date).ToUniversalTime().AddDays($ExpirationInDays)
+# Calls the generateCredentials API directly. New-AzContainerRegistryCredentials flattens the answer into
+# plain Password / Password2 strings and drops the password names and the expiry date.
+# "name" selects the slot (password1 / password2). The answer has the user name and the new password.
+$body = @{
+	tokenId = $token.Id
+	name    = $PasswordName
+	expiry  = (Get-Date).ToUniversalTime().AddDays($ExpirationInDays).ToString('o')
 }
-$credential = New-AzContainerRegistryCredentials @generate
+# Long-running operation: ARM may answer 202 first. -WaitForCompletion polls until the result is there.
+$generate = @{
+	Method            = 'POST'
+	Path              = "$($registry.Id)/generateCredentials?api-version=2023-07-01"
+	Payload           = $body | ConvertTo-Json -Compress
+	WaitForCompletion = $true
+}
+$response = Invoke-AzRestMethod @generate
+if ($response.StatusCode -ne 200) {
+	throw "Generating $PasswordName for token '$TokenName' failed: $($response.StatusCode) $($response.Content)"
+}
+$credential = $response.Content | ConvertFrom-Json
 
-# Only the generated password comes back - match by name, fall back to the first one
-$password = $credential.Password | Where-Object Name -eq $PasswordName | Select-Object -First 1
-if (-not $password) { $password = $credential.Password | Select-Object -First 1 }
-$passwordValue = $password.Value
-if ($passwordValue -is [securestring]) { $passwordValue = $passwordValue | ConvertFrom-SecureString -AsPlainText }
-if (-not $passwordValue) { throw "No password returned for token '$TokenName'." }
+$password = $credential.passwords | Where-Object name -eq $PasswordName | Select-Object -First 1
+$passwordValue = $password.value
+if (-not $passwordValue) {
+	throw "No $PasswordName returned for token '$TokenName'."
+}
 
 $secrets = [ordered]@{
 	"$($SecretPrefix)_CONTAINER_REGISTRY_SERVER"   = $server
-	"$($SecretPrefix)_CONTAINER_REGISTRY_USER"     = $credential.Username
+	"$($SecretPrefix)_CONTAINER_REGISTRY_USER"     = $credential.username
 	"$($SecretPrefix)_CONTAINER_REGISTRY_PASSWORD" = $passwordValue
 }
 
@@ -155,9 +165,9 @@ foreach ($entry in $secrets.GetEnumerator()) {
 
 [pscustomobject]@{
 	Server     = $server
-	User       = $credential.Username
+	User       = $credential.username
 	Password   = $PasswordName
-	Expires    = $password.Expiry
+	Expires    = $password.expiry
 	Repository = $GitHubRepository
 }
 Write-Host "Running codespaces need a restart to see the new secrets."
