@@ -1,0 +1,301 @@
+name: Dev Containers Part 2
+
+# One workflow for the registry (Terraform) and the image (build, test, push).
+# A first job finds out what changed. Terraform runs before the image, so on the first run
+# the registry exists before the image is pushed to it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dev Containers Part 2 Build Your Own Image/infra/**"
+      - "Dev Containers Part 2 Build Your Own Image/image/**"
+      - ".github/workflows/dev-containers-part-2.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dev Containers Part 2 Build Your Own Image/infra/**"
+      - "Dev Containers Part 2 Build Your Own Image/image/**"
+      - ".github/workflows/dev-containers-part-2.yml"
+  # Weekly rebuild of the image: picks up updates of the base image and the Ubuntu packages
+  schedule:
+    - cron: "17 4 * * 1"
+  # Manual run: Terraform and image
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never run two Terraform applies against the same state at once
+concurrency:
+  group: dev-containers-part-2-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_DIR: "Dev Containers Part 2 Build Your Own Image"
+  TF_DIR: "Dev Containers Part 2 Build Your Own Image/infra"
+  IMAGE_DIR: "Dev Containers Part 2 Build Your Own Image/image"
+  IMAGE_NAME: ${{ vars.ACR_NAME }}.azurecr.io/devcontainers/devops
+  TERRAFORM_VERSION: "1.16.6"
+  # Azure sign-in for Terraform (provider + backend)
+  ARM_CLIENT_ID: ${{ vars.AZURE_INFRA_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: "true"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  # Terraform variables from the repository variables written by the bootstrap script
+  TF_VAR_resource_group_name: ${{ vars.AZURE_RESOURCE_GROUP }}
+  TF_VAR_registry_name: ${{ vars.ACR_NAME }}
+  TF_VAR_image_push_principal_id: ${{ vars.AZURE_IMAGE_PRINCIPAL_ID }}
+  TF_VAR_acr_pull_principal_ids: ${{ vars.ACR_PULL_PRINCIPAL_IDS || '[]' }}
+
+jobs:
+  changes:
+    name: What changed?
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      image: ${{ steps.filter.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Manual run: both. Schedule: image only. Push / pull request: what the diff touches.
+      # A change of this workflow file runs both.
+      - name: Compare with the previous commit
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          infra=false
+          image=false
+          case "${EVENT}" in
+            workflow_dispatch) infra=true; image=true ;;
+            schedule) image=true ;;
+            *)
+              if [[ -z "${BASE_SHA}" || "${BASE_SHA}" =~ ^0+$ ]] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+                # New branch or unknown base: no diff possible, run both
+                infra=true; image=true
+              else
+                changed="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
+                if grep -qF ".github/workflows/dev-containers-part-2.yml" <<< "${changed}"; then infra=true; image=true; fi
+                if grep -qF "${PROJECT_DIR}/infra/" <<< "${changed}"; then infra=true; fi
+                if grep -qF "${PROJECT_DIR}/image/" <<< "${changed}"; then image=true; fi
+              fi
+              ;;
+          esac
+          echo "infra=${infra}" >> "$GITHUB_OUTPUT"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "Terraform: ${infra} | Image: ${image}" >> "$GITHUB_STEP_SUMMARY"
+
+  terraform-plan:
+    name: Terraform plan
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: >
+          terraform init
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}"
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan
+
+      - name: Plan summary
+        run: |
+          {
+            echo "### Terraform plan"
+            echo '```'
+            terraform show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  terraform-apply:
+    name: Terraform apply
+    needs: terraform-plan
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Optional: add required reviewers to this environment (Settings > Environments)
+    environment: devcontainer-registry
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: >
+          terraform init
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=${{ vars.TFSTATE_CONTAINER }}"
+
+      # Plan again in this job and apply exactly that plan. The plan job above shows the
+      # same changes in its summary - review them there before you approve the environment.
+      - name: Terraform plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform apply
+        run: terraform apply tfplan
+
+      - name: Summary
+        run: |
+          {
+            echo "### Registry"
+            echo "Login server: \`$(terraform output -raw login_server)\`"
+            echo ""
+            echo "Image: \`$(terraform output -raw image)\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  image:
+    name: Image - build, test and push
+    needs: [changes, terraform-plan, terraform-apply]
+    # Runs after Terraform when both run. Skipped Terraform jobs are fine, failed ones stop the image.
+    if: >-
+      !cancelled()
+      && needs.changes.outputs.image == 'true'
+      && !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    # Pull requests only build and test. Pushes to main, the weekly schedule and manual runs
+    # also push. The federated credential of the image identity trusts refs/heads/main only.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD'}},enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=DevOps dev container
+            org.opencontainers.image.description=PowerShell, Terraform, Ansible, Azure CLI, kubectl, Helm and GitHub CLI for VS Code dev containers
+
+      # 1. Build into the local Docker engine, so the tests can run the image
+      - name: Build
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ env.IMAGE_DIR }}
+          platforms: linux/amd64
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=devcontainer-devops
+          cache-to: type=gha,scope=devcontainer-devops,mode=max
+
+      - name: Test - tool versions and modules (Pester)
+        run: >
+          docker run --rm --user vscode
+          --volume "${{ github.workspace }}/${{ env.IMAGE_DIR }}:/image:ro"
+          "${{ steps.build.outputs.imageid }}"
+          pwsh -NoLogo -NoProfile -File /image/tests/Invoke-ImageTest.ps1
+
+      - name: Test - devcontainer.metadata label
+        run: |
+          metadata="$(docker image inspect "${{ steps.build.outputs.imageid }}" --format '{{ index .Config.Labels "devcontainer.metadata" }}')"
+          echo "${metadata}" | jq -e '.[0].remoteUser == "vscode" and (.[0].customizations.vscode.extensions | length) > 0'
+
+      - name: Image size
+        run: |
+          size="$(docker image inspect "${{ steps.build.outputs.imageid }}" --format '{{ .Size }}')"
+          {
+            echo "### DevOps image"
+            echo "Size: $(( size / 1024 / 1024 )) MB"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 2. Push - only from main, never from pull requests
+      - name: Azure login (OIDC)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_IMAGE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
+
+      # Az PowerShell: gets a registry token for the image identity and runs 'docker login' with it
+      - name: Log in to Azure Container Registry
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: azure/powershell@v3
+        with:
+          azPSVersion: latest
+          inlineScript: |
+            Connect-AzContainerRegistry -Name '${{ vars.ACR_NAME }}'
+
+      # Same builder, same inputs -> every layer comes from the cache of step 1.
+      # The pushed image is the tested image, plus provenance and SBOM attestations.
+      - name: Push
+        id: push
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ env.IMAGE_DIR }}
+          platforms: linux/amd64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=devcontainer-devops
+
+      - name: Summary
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "Pushed digest: \`${DIGEST}\`"
+            echo ""
+            echo "Tags:"
+            while read -r tag; do echo "- \`${tag}\`"; done <<< "${TAGS}"
+            echo ""
+            echo "Pin it in devcontainer.json: \`${IMAGE_NAME}@${DIGEST}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
