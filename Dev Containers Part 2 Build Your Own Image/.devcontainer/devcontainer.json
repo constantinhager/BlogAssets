@@ -1,0 +1,28 @@
+// For format details, see https://aka.ms/devcontainer.json.
+{
+    "name": "DevOps",
+
+    // The image from Part 2: PowerShell, Terraform, TFLint, Ansible, Azure CLI, kubectl, Helm and GitHub CLI
+    // are baked in. Replace acrdevcontainerx1y2z3 with your registry (terraform output -raw image).
+    // Pin a date tag (or the digest from the workflow summary) for reproducible builds, 'latest' to follow updates.
+    "image": "acrdevcontainerx1y2z3.azurecr.io/devcontainers/devops:latest",
+
+    // The image brings its own VS Code extensions and settings (label devcontainer.metadata).
+    // Everything below is merged on top of it - only what this repository needs in addition.
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "eamodio.gitlens"
+            ],
+            "settings": {
+                "editor.formatOnSave": true,
+                "files.trimTrailingWhitespace": true,
+                "files.insertFinalNewline": true
+            }
+        }
+    },
+
+    // Install the Ansible collections and roles of this repository, if there are any.
+    // Repository-specific setup stays here - tools that every project needs belong in the image.
+    "postCreateCommand": "if [ -f requirements.yml ]; then ansible-galaxy install -r requirements.yml; fi"
+}

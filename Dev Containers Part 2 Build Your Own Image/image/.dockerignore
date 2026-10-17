@@ -1,0 +1,3 @@
+# Only the Dockerfile and scripts/ are part of the build context
+tests/
+*.md

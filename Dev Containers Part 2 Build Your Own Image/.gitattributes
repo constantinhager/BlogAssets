@@ -1,0 +1,5 @@
+# The image is built on Linux. CRLF in a shell script breaks the build on a Windows checkout.
+* text=auto eol=lf
+*.ps1 text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
