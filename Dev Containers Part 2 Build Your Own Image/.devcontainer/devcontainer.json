@@ -1,27 +1,56 @@
 // For format details, see https://aka.ms/devcontainer.json.
 {
     "name": "DevOps",
-
     // The image from Part 2: PowerShell, Terraform, TFLint, Ansible, Azure CLI, kubectl, Helm and GitHub CLI
     // are baked in. Replace acrdevcontainery4zpbr with your registry (terraform output -raw image).
     // Pin a date tag (or the digest from the workflow summary) for reproducible builds, 'latest' to follow updates.
     "image": "acrdevcontainery4zpbr.azurecr.io/devcontainers/devops:latest",
-
     // The image brings its own VS Code extensions and settings (label devcontainer.metadata).
     // Everything below is merged on top of it - only what this repository needs in addition.
     "customizations": {
         "vscode": {
             "extensions": [
-                "eamodio.gitlens"
+                "eamodio.gitlens",
+                "vscode-icons-team.vscode-icons"
             ],
             "settings": {
                 "editor.formatOnSave": true,
+                "editor.tabCompletion": "on",
+                "editor.formatOnType": true,
+                "editor.formatOnPaste": true,
+                "editor.bracketPairColorization.enabled": true,
+                "editor.guides.bracketPairs": true,
+                "editor.guides.bracketPairsHorizontal": true,
+                "editor.guides.highlightActiveBracketPair": true,
+                "editor.guides.highlightActiveIndentation": true,
+                "editor.guides.indentation": true,
+                "diffEditor.ignoreTrimWhitespace": false,
+                "files.autoSave": "afterDelay",
+                "files.autoSaveDelay": 1000,
+                "files.hotExit": "onExitAndWindowClose",
+                "files.defaultLanguage": "powershell",
                 "files.trimTrailingWhitespace": true,
-                "files.insertFinalNewline": true
+                "files.insertFinalNewline": true,
+                "git.enableSmartCommit": true,
+                "git.confirmSync": false,
+                "git.autofetch": true,
+                "git.pruneOnFetch": true,
+                "git.mergeEditor": true,
+                "git.pullBeforeCheckout": true,
+                "git.decorations.enabled": true,
+                "workbench.startupEditor": "none",
+                "window.newWindowDimensions": "maximized",
+                "window.commandCenter": true,
+                "terminal.integrated.cursorBlinking": true,
+                "terminal.integrated.cursorStyle": "line",
+                "terminal.integrated.scrollback": 9999,
+                "workbench.tree.indent": 20,
+                "workbench.tree.renderIndentGuides": "always",
+                "workbench.iconTheme": "vscode-icons",
+                "vsicons.dontShowNewVersionMessage": true
             }
         }
     },
-
     // Install the Ansible collections and roles of this repository, if there are any.
     // Repository-specific setup stays here - tools that every project needs belong in the image.
     "postCreateCommand": "if [ -f requirements.yml ]; then ansible-galaxy install -r requirements.yml; fi"
