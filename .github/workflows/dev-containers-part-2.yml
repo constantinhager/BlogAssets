@@ -16,9 +16,6 @@ on:
       - "Dev Containers Part 2 Build Your Own Image/infra/**"
       - "Dev Containers Part 2 Build Your Own Image/image/**"
       - ".github/workflows/dev-containers-part-2.yml"
-  # Weekly rebuild of the image: picks up updates of the base image and the Ubuntu packages
-  schedule:
-    - cron: "17 4 * * 1"
   # Manual run: Terraform and image
   workflow_dispatch:
 
