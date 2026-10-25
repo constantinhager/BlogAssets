@@ -64,11 +64,12 @@ The workflow `.github/workflows/entra-credential-rotation.yml` belongs in the ro
 
 1. `Connect-AzAccount; ./scripts/New-GitHubOidcDeploymentIdentity.ps1 -GitHubOrganization <org> -GitHubRepository <repo> -ConfigureGitHub`
 2. Rotation app, step 1 (Global Admin / Privileged Role Admin): `$app = ./scripts/New-SecretRotationApp.ps1 -HomeTenantId <tenant>` - creates the app and consents in the home tenant.
-3. Copy `infra/production.tfvars.example` to `infra/production.tfvars`, set `rotation_app_id = $app.RotationAppId`, push.
-4. Rotation app, step 2, right after the deployment: `./scripts/New-SecretRotationApp.ps1 -HomeTenantId <tenant> -ManagedIdentityPrincipalId (terraform -chdir=infra output -raw managed_identity_principal_id)` - adds the federated identity credential.
-5. `./scripts/Set-SecretRotationMailScope.ps1 -Organization <tenant>.onmicrosoft.com -SenderAddress <mailbox> -RotationAppId $app.RotationAppId -RotationServicePrincipalId $app.HomeServicePrincipalId -CreateSharedMailbox`
-6. Customer tenants: an admin of each tenant opens `$app.CustomerConsentUrl` (with the tenant ID), then add the tenant to `customer_tenant_ids`.
-7. Tag apps that someone else takes care of with `SecretRotation:Exclude`.
+3. Create the Entra ID group that will approve renewals and may import existing secrets into Key Vault with `./scripts/New-SecretRotationGroup.ps1 -DisplayName <group name> -Owner <owner> -tfvarsPath <path to infra/production.tfvars>`
+4. Copy `infra/production.tfvars.example` to `infra/production.tfvars`, set `rotation_app_id = $app.RotationAppId`, push.
+5. Rotation app, step 2, right after the deployment: `./scripts/New-SecretRotationApp.ps1 -HomeTenantId <tenant> -ManagedIdentityPrincipalId <output from github action>` - adds the federated identity credential.
+6. In a **new** PowerShell session (Az.Storage from step 1 loads an older `Microsoft.OData.Core` that ExchangeOnlineManagement can't use): `./scripts/Set-SecretRotationMailScope.ps1 -Organization <tenant>.onmicrosoft.com -SenderAddress <mailbox> -RotationAppId <RotationAppId> -RotationServicePrincipalId <HomeServicePrincipalId> -CreateSharedMailbox` - take the IDs from `$app` of step 2.
+7. Customer tenants: an admin of each tenant opens `$app.CustomerConsentUrl` (with the tenant ID), then add the tenant to `customer_tenant_ids`. The URL needs the reply URL that step 2 registers (`https://entra.microsoft.com/` by default) - for an app created before, run step 2 again to add it, otherwise the consent fails with AADSTS500113.
+8. Tag apps that someone else takes care of with `SecretRotation:Exclude`.
 
 ## Daily use
 

@@ -18,4 +18,4 @@ admin_principal_ids = ["f55412ca-929e-445d-b4fb-1b20bd463a64"]
 rotation_app_id = "de3a702c-dbc4-4235-b790-af3e375609af"
 
 # Customer tenants (admin consent for the rotation app first). The home tenant is always included.
-customer_tenant_ids = []
+customer_tenant_ids = ["e0481636-c11c-46a3-84ac-92088e63caca"]
