@@ -8,14 +8,14 @@ threshold_days              = 30
 secret_validity_days        = 180
 certificate_validity_months = 12
 
-mail_sender     = "secretrotation@constantinhageroutlook.onmicrosoft.com"
-mail_recipients = ["admin@constantinhageroutlook.onmicrosoft.com"]
+mail_sender     = "yoursender@maildomain.com"
+mail_recipients = ["yourmailrecepient@maildomain.com"]
 
 # Group that approves renewals (edits the state table) and may import existing secrets into Key Vault
-admin_principal_ids = ["f55412ca-929e-445d-b4fb-1b20bd463a64"]
+admin_principal_ids = []
 
 # Required: client ID of the rotation app (output of scripts/New-SecretRotationApp.ps1)
-rotation_app_id = "de3a702c-dbc4-4235-b790-af3e375609af"
+rotation_app_id = ""
 
 # Customer tenants (admin consent for the rotation app first). The home tenant is always included.
-customer_tenant_ids = ["e0481636-c11c-46a3-84ac-92088e63caca"]
+customer_tenant_ids = []
