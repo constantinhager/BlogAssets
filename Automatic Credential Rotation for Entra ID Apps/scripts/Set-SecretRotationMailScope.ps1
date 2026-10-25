@@ -67,6 +67,19 @@ param (
 )
 
 $ErrorActionPreference = 'Stop'
+
+# A loaded assembly can't be unloaded: if another module (e.g. Az.Storage) already loaded a different
+# Microsoft.OData.Core, the Exchange cmdlets fail later with a FileLoadException
+$loadedOData = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { $_.GetName().Name -eq 'Microsoft.OData.Core' } | Select-Object -First 1
+if ($loadedOData) {
+	$exoModule = @(Get-Module -Name ExchangeOnlineManagement) + @(Get-Module -Name ExchangeOnlineManagement -ListAvailable | Sort-Object Version -Descending) | Select-Object -First 1
+	$exoOData = Get-ChildItem -Path $exoModule.ModuleBase -Filter 'Microsoft.OData.Core.dll' -Recurse | Select-Object -First 1
+	$requiredVersion = if ($exoOData) { [Reflection.AssemblyName]::GetAssemblyName($exoOData.FullName).Version }
+	if ($requiredVersion -and $loadedOData.GetName().Version -ne $requiredVersion) {
+		throw "This session already loaded Microsoft.OData.Core $($loadedOData.GetName().Version) from '$($loadedOData.Location)', but ExchangeOnlineManagement $($exoModule.Version) needs $requiredVersion. Run this script in a new PowerShell session."
+	}
+}
+
 Connect-ExchangeOnline -Organization $Organization -ShowBanner:$false
 
 $mailbox = Get-EXOMailbox -Identity $SenderAddress -ErrorAction SilentlyContinue
