@@ -134,7 +134,7 @@ resource "azurerm_storage_table" "renewals" {
 
 # Data plane access with Entra ID, scoped to the one table - the function never uses the account key for it
 resource "azurerm_role_assignment" "function_table" {
-  scope              = azurerm_storage_table.renewals.resource_manager_id
+  scope              = azurerm_storage_table.renewals.id
   role_definition_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/${local.roles.storage_table_data_contributor}"
   principal_id       = azurerm_user_assigned_identity.function.principal_id
   principal_type     = "ServicePrincipal"
@@ -142,7 +142,7 @@ resource "azurerm_role_assignment" "function_table" {
 
 resource "azurerm_role_assignment" "admins_table" {
   for_each           = toset(var.admin_principal_ids)
-  scope              = azurerm_storage_table.renewals.resource_manager_id
+  scope              = azurerm_storage_table.renewals.id
   role_definition_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/providers/Microsoft.Authorization/roleDefinitions/${local.roles.storage_table_data_contributor}"
   principal_id       = each.value
 }
