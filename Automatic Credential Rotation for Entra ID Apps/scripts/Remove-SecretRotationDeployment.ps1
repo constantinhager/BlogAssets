@@ -10,7 +10,8 @@
 	With -GitHubOrganization and -GitHubRepository it also removes the GitHub repository variables
 	(AZURE_*, TFSTATE_*) via gh. Other workflows in the same repository use the same variable names, so
 	they are only removed while TFSTATE_RESOURCE_GROUP still points to this deployment's state. The
-	environment 'production' is shared too - it is only removed with -RemoveGitHubEnvironment.
+	environment 'production' is shared too - it is only removed with -RemoveGitHubEnvironment. The runs of
+	the workflow (-WorkflowFileName) are removed with their logs and artifacts; runs in progress are kept.
 
 	What stays:
 	- The Key Vault is soft-deleted, not purged. With purge protection it can't be purged until the
@@ -58,7 +59,10 @@ param (
 	$GitHubRepository,
 
 	[switch]
-	$RemoveGitHubEnvironment
+	$RemoveGitHubEnvironment,
+
+	[string]
+	$WorkflowFileName = 'entra-credential-rotation.yml'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -105,6 +109,16 @@ if ($GitHubOrganization -and $GitHubRepository) {
 	if ($RemoveGitHubEnvironment -and $PSCmdlet.ShouldProcess("$repo environment 'production'", 'Remove GitHub environment')) {
 		gh api --method DELETE "repos/$repo/environments/production" | Out-Null
 		if ($LASTEXITCODE -ne 0) { throw "Removing the environment 'production' of $repo failed." }
+	}
+
+	$runs = @(gh api --paginate "repos/$repo/actions/workflows/$WorkflowFileName/runs?per_page=100" --jq '.workflow_runs[] | {id, status}' | ConvertFrom-Json)
+	if ($LASTEXITCODE -ne 0) { Write-Warning "Listing the runs of $WorkflowFileName in $repo failed - runs kept." }
+	elseif ($runs.Count -gt 0 -and $PSCmdlet.ShouldProcess("$repo $WorkflowFileName", "Remove $($runs.Count) workflow run(s) including logs and artifacts")) {
+		foreach ($run in $runs) {
+			if ($run.status -ne 'completed') { Write-Warning "Run $($run.id) is $($run.status) - kept."; continue }
+			gh api --method DELETE "repos/$repo/actions/runs/$($run.id)" | Out-Null
+			if ($LASTEXITCODE -ne 0) { Write-Warning "Removing run $($run.id) failed." }
+		}
 	}
 }
 

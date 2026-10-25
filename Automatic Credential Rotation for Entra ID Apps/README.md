@@ -120,6 +120,6 @@ Offline - Graph, Key Vault and Table Storage are replaced with an in-memory fake
     -GitHubOrganization <org> -GitHubRepository <repo> -RemoveGitHubEnvironment -WhatIf
 ```
 
-The GitHub variables (`AZURE_*`, `TFSTATE_*`) are only removed while `TFSTATE_RESOURCE_GROUP` still points to this deployment - other workflows in the repository use the same names. Leave out `-RemoveGitHubEnvironment` if another workflow uses the environment `production` too.
+The GitHub variables (`AZURE_*`, `TFSTATE_*`) are only removed while `TFSTATE_RESOURCE_GROUP` still points to this deployment - other workflows in the repository use the same names. Leave out `-RemoveGitHubEnvironment` if another workflow uses the environment `production` too. The runs of `entra-credential-rotation.yml` are removed with their logs and artifacts.
 
 The Key Vault is soft-deleted, not purged.
