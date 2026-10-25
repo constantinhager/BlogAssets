@@ -12,6 +12,7 @@
 
 	1. Before the first deployment, without -ManagedIdentityPrincipalId:
 	   - multi-tenant app registration, requesting Graph Application.ReadWrite.All
+	   - reply URL for the admin consent of the customer tenants (added to an existing app too)
 	   - service principal in the home tenant + admin consent (app role assignment) in the home tenant
 	   - tag SecretRotation:Exclude, so the function never adds a credential to its own app
 	   Put the printed app ID into production.tfvars (rotation_app_id) and deploy.
@@ -34,6 +35,10 @@
 .PARAMETER DisplayName
 	Display name of the app registration.
 
+.PARAMETER ConsentRedirectUri
+	Reply URL the admin consent endpoint returns to. Without a registered reply URL, the consent in a
+	customer tenant fails with AADSTS500113. Only admin_consent and tenant come back - no token, no code.
+
 .EXAMPLE
 	PS C:\> ./scripts/New-SecretRotationApp.ps1 -HomeTenantId $tenantId
 
@@ -54,7 +59,11 @@ param (
 	$ManagedIdentityPrincipalId,
 
 	[string]
-	$DisplayName = 'Entra Credential Rotation'
+	$DisplayName = 'Entra Credential Rotation',
+
+	[ValidatePattern('^https://')]
+	[string]
+	$ConsentRedirectUri = 'https://entra.microsoft.com/'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -68,9 +77,15 @@ $role = $graph.AppRoles | Where-Object { $_.Value -eq 'Application.ReadWrite.All
 $app = Get-MgApplication -Filter "displayName eq '$DisplayName'"
 if (@($app).Count -gt 1) { throw "More than one app named '$DisplayName'." }
 if (-not $app -and $PSCmdlet.ShouldProcess($DisplayName, 'Create multi-tenant app registration')) {
-	$app = New-MgApplication -DisplayName $DisplayName -SignInAudience 'AzureADMultipleOrgs' -Tags @('SecretRotation:Exclude') -RequiredResourceAccess @(
+	$app = New-MgApplication -DisplayName $DisplayName -SignInAudience 'AzureADMultipleOrgs' -Tags @('SecretRotation:Exclude') -Web @{ RedirectUris = @($ConsentRedirectUri) } -RequiredResourceAccess @(
 		@{ ResourceAppId = $graphAppId; ResourceAccess = @(@{ Id = $role.Id; Type = 'Role' }) }
 	)
+}
+
+# The admin consent endpoint refuses an app without a reply URL (AADSTS500113)
+$redirectUris = @($app.Web.RedirectUris | Where-Object { $_ })
+if ($app -and $redirectUris -notcontains $ConsentRedirectUri -and $PSCmdlet.ShouldProcess($DisplayName, "Add reply URL $ConsentRedirectUri")) {
+	Update-MgApplication -ApplicationId $app.Id -Web @{ RedirectUris = $redirectUris + $ConsentRedirectUri }
 }
 
 # 2. Service principal + admin consent in the home tenant
@@ -104,5 +119,5 @@ else {
 [pscustomobject]@{
 	RotationAppId             = $app.AppId    # rotation_app_id / SR_ROTATION_APP_ID, -RotationAppId of Set-SecretRotationMailScope.ps1
 	HomeServicePrincipalId    = $sp.Id        # -RotationServicePrincipalId of Set-SecretRotationMailScope.ps1
-	CustomerConsentUrl        = "https://login.microsoftonline.com/<customer-tenant-id>/adminconsent?client_id=$($app.AppId)"
+	CustomerConsentUrl        = "https://login.microsoftonline.com/<customer-tenant-id>/adminconsent?client_id=$($app.AppId)&redirect_uri=$([uri]::EscapeDataString($ConsentRedirectUri))"
 }
