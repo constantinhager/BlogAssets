@@ -277,17 +277,31 @@ jobs:
 
       - name: Smoke test
         run: |
-          # "/" is public and answers once DAB has loaded the database metadata.
+          # "/" is public and answers as soon as the DAB process runs. Every other path returns 503
+          # until DAB has loaded the database metadata - so wait for /api/Event as well.
           # Until the new revision takes over, the bootstrap image answers with HTML - keep waiting.
           $deadline = (Get-Date).AddMinutes(5)
           do {
-              $root = Invoke-RestMethod -Uri "$env:API_URL/" -SkipHttpErrorCheck -StatusCodeVariable status
-              if ($status -eq 200 -and $root.version) { break }
+              $root = Invoke-RestMethod -Uri "$env:API_URL/" -SkipHttpErrorCheck -StatusCodeVariable rootStatus
+              if ($rootStatus -eq 200 -and $root.version) {
+                  # Without a token the API must refuse to return data.
+                  $null = Invoke-RestMethod -Uri "$env:API_URL/api/Event" -SkipHttpErrorCheck -StatusCodeVariable status
+                  if ($status -ne 503) { break }
+              }
               Start-Sleep -Seconds 10
           } while ((Get-Date) -lt $deadline)
           if (-not $root.version) { throw 'DAB did not answer on / within 5 minutes.' }
           "DAB $($root.version): $($root.status)"
-          # Without a token the API must refuse to return data.
-          $null = Invoke-RestMethod -Uri "$env:API_URL/api/Event" -SkipHttpErrorCheck -StatusCodeVariable status
           "GET /api/Event without token -> $status"
+          if ($status -eq 503) {
+              $logs = @(
+                  'containerapp', 'logs', 'show'
+                  '--name', '${{ needs.terraform-apply.outputs.container_app_name }}'
+                  '--resource-group', '${{ needs.terraform-apply.outputs.resource_group_name }}'
+                  '--type', 'console'
+                  '--tail', '100'
+              )
+              az @logs
+              throw 'DAB did not finish loading the database metadata within 5 minutes.'
+          }
           if ($status -notin 401, 403) { throw "Anonymous access returned $status." }

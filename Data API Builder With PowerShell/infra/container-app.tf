@@ -85,7 +85,8 @@ resource "azurerm_container_app" "dab" {
         value = "https://login.microsoftonline.com/${local.tenant_id}/v2.0"
       }
 
-      # "/" is DAB's anonymous basic health endpoint. It answers once the metadata is loaded.
+      # "/" is DAB's anonymous basic health endpoint. It answers as soon as the process runs,
+      # before the metadata is loaded (other paths return 503 until then).
       startup_probe {
         transport               = "HTTP"
         port                    = 5000
