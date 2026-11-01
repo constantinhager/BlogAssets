@@ -9,6 +9,8 @@
     Prefer 'terraform destroy' for the Terraform part. This script is for when the state is
     gone or you want to clean up the bootstrap too. Every step runs only if you pass its
     parameters, asks before it deletes and supports -WhatIf.
+    With GitHubOrganization and GitHubRepository, the completed runs of the workflow
+    (-WorkflowFileName) are deleted too, with their logs and artifacts; runs in progress are kept.
 
 .EXAMPLE
     $remove = @{
@@ -66,7 +68,11 @@ param(
 
     [Parameter()]
     [string]
-    $EnvironmentName = 'production'
+    $EnvironmentName = 'production',
+
+    [Parameter()]
+    [string]
+    $WorkflowFileName = 'data-api-builder.yml'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -195,7 +201,7 @@ if ($RemoveTerraformState -and (Get-AzResourceGroup -Name $StateResourceGroupNam
     $removed.Add("State resource group $StateResourceGroupName")
 }
 
-# 6. GitHub variables and environment.
+# 6. GitHub variables, environment and workflow runs.
 if ($GitHubOrganization -and $GitHubRepository) {
     $repo = "$GitHubOrganization/$GitHubRepository"
     $variables = 'AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'TFSTATE_RESOURCE_GROUP',
@@ -204,6 +210,29 @@ if ($GitHubOrganization -and $GitHubRepository) {
         foreach ($name in $variables) { gh variable delete $name --repo $repo 2>$null }
         gh api --method DELETE "repos/$repo/environments/$EnvironmentName" --silent 2>$null
         $removed.Add("GitHub variables and environment in $repo")
+    }
+
+    # Deleting a run also deletes its logs and artifacts (dacpac, tfplan). Runs in progress are kept.
+    $runs = @(gh api --paginate "repos/$repo/actions/workflows/$WorkflowFileName/runs?per_page=100" --jq '.workflow_runs[] | {id, status}' 2>$null |
+        ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Listing the runs of $WorkflowFileName in $repo failed - runs kept."
+    }
+    elseif ($runs.Count -gt 0 -and $PSCmdlet.ShouldProcess("$repo $WorkflowFileName", "Delete $($runs.Count) workflow run(s) including logs and artifacts")) {
+        $deleted = 0
+        foreach ($run in $runs) {
+            if ($run.status -ne 'completed') {
+                Write-Warning "Run $($run.id) is $($run.status) - kept."
+                continue
+            }
+            gh api --method DELETE "repos/$repo/actions/runs/$($run.id)" --silent
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Deleting run $($run.id) failed."
+                continue
+            }
+            $deleted++
+        }
+        $removed.Add("$deleted workflow run(s) of $WorkflowFileName in $repo")
     }
 }
 
