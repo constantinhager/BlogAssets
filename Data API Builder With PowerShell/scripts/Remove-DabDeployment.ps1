@@ -24,47 +24,47 @@
 #>
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]
     $ResourceGroupName,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [guid]
     $ApiClientId,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [switch]
     $RemovePipelineIdentity,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]
     $PipelineAppDisplayName = 'github-dab-sql-deploy',
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [switch]
     $RemoveSqlAdminGroup,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]
     $SqlAdminGroupName = 'sg-dab-sql-admins',
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [switch]
     $RemoveTerraformState,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]
     $StateResourceGroupName = 'rg-dab-tfstate',
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]
     $GitHubOrganization,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]
     $GitHubRepository,
 
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]
     $EnvironmentName = 'production'
 )
