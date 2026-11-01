@@ -1,0 +1,156 @@
+{
+  "$schema": "https://github.com/Azure/data-api-builder/releases/download/v2.1.5/dab.draft.schema.json",
+  "data-source": {
+    "database-type": "mssql",
+    "connection-string": "@env('DAB_CONNECTION_STRING')"
+  },
+  "runtime": {
+    "rest": {
+      "enabled": true,
+      "path": "/api",
+      "request-body-strict": true
+    },
+    "graphql": {
+      "enabled": true,
+      "path": "/graphql",
+      "allow-introspection": true,
+      "depth-limit": 5
+    },
+    "mcp": {
+      "enabled": false
+    },
+    "host": {
+      "mode": "production",
+      "cors": {
+        "origins": [],
+        "allow-credentials": false
+      },
+      "authentication": {
+        "provider": "EntraID",
+        "jwt": {
+          "audience": "@env('DAB_JWT_AUDIENCE')",
+          "issuer": "@env('DAB_JWT_ISSUER')"
+        }
+      }
+    },
+    "pagination": {
+      "default-page-size": 100,
+      "max-page-size": 1000,
+      "next-link-relative": true
+    },
+    "health": {
+      "enabled": true,
+      "roles": [ "authenticated" ],
+      "cache-ttl-seconds": 10
+    }
+  },
+  "entities": {
+    "Event": {
+      "description": "A meetup or online session.",
+      "source": {
+        "object": "app.Events",
+        "type": "table"
+      },
+      "graphql": {
+        "enabled": true,
+        "type": {
+          "singular": "Event",
+          "plural": "Events"
+        }
+      },
+      "rest": {
+        "enabled": true
+      },
+      "permissions": [
+        {
+          "role": "authenticated",
+          "actions": [ "read" ]
+        },
+        {
+          "role": "writer",
+          "actions": [ "*" ]
+        }
+      ],
+      "relationships": {
+        "sessions": {
+          "cardinality": "many",
+          "target.entity": "Session",
+          "source.fields": [ "EventId" ],
+          "target.fields": [ "EventId" ]
+        }
+      }
+    },
+    "Session": {
+      "description": "A talk at an event.",
+      "source": {
+        "object": "app.Sessions",
+        "type": "table"
+      },
+      "graphql": {
+        "enabled": true,
+        "type": {
+          "singular": "Session",
+          "plural": "Sessions"
+        }
+      },
+      "rest": {
+        "enabled": true
+      },
+      "permissions": [
+        {
+          "role": "authenticated",
+          "actions": [
+            {
+              "action": "read",
+              "fields": {
+                "include": [ "*" ],
+                "exclude": [ "SpeakerEmail" ]
+              }
+            }
+          ]
+        },
+        {
+          "role": "writer",
+          "actions": [ "*" ]
+        }
+      ],
+      "relationships": {
+        "event": {
+          "cardinality": "one",
+          "target.entity": "Event",
+          "source.fields": [ "EventId" ],
+          "target.fields": [ "EventId" ]
+        }
+      }
+    },
+    "UpcomingEvents": {
+      "description": "Events in the next N days, with the number of sessions.",
+      "source": {
+        "object": "app.GetUpcomingEvents",
+        "type": "stored-procedure",
+        "parameters": [
+          {
+            "name": "Days",
+            "required": false,
+            "default": 90,
+            "description": "How many days to look ahead (1-365)."
+          }
+        ]
+      },
+      "graphql": {
+        "enabled": true,
+        "operation": "query"
+      },
+      "rest": {
+        "enabled": true,
+        "methods": [ "get" ]
+      },
+      "permissions": [
+        {
+          "role": "authenticated",
+          "actions": [ "execute" ]
+        }
+      ]
+    }
+  }
+}

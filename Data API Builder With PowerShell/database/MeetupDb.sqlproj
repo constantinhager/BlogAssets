@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SDK-style SQL database project. "dotnet build" validates every object against the
+  Azure SQL Database model and produces bin/<Configuration>/MeetupDb.dacpac.
+  SqlPackage deploys the .dacpac - see scripts/Publish-DabDatabase.ps1.
+-->
+<Project DefaultTargets="Build">
+  <Sdk Name="Microsoft.Build.Sql" Version="2.3.0" />
+
+  <PropertyGroup>
+    <Name>MeetupDb</Name>
+    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider</DSP>
+    <ModelCollation>1033, CI</ModelCollation>
+    <DefaultSchema>app</DefaultSchema>
+    <!-- Static code analysis (SR rules) on every build. Findings are build warnings. -->
+    <RunSqlCodeAnalysis>True</RunSqlCodeAnalysis>
+  </PropertyGroup>
+
+  <!--
+    Scripts/ holds the post-deployment script and the files it includes with :r.
+    They are not schema objects, so they are not part of the model build.
+  -->
+  <ItemGroup>
+    <Build Remove="Scripts\**\*.sql" />
+    <None Include="Scripts\Seed.sql" />
+    <None Include="Scripts\DabUser.sql" />
+    <PostDeploy Include="Scripts\Script.PostDeployment.sql" />
+  </ItemGroup>
+
+  <!-- Set at deployment time: SqlPackage /v:DabIdentityName=... /v:DabIdentityClientId=... -->
+  <ItemGroup>
+    <SqlCmdVariable Include="DabIdentityName">
+      <DefaultValue></DefaultValue>
+      <Value>$(SqlCmdVar__1)</Value>
+    </SqlCmdVariable>
+    <SqlCmdVariable Include="DabIdentityClientId">
+      <DefaultValue></DefaultValue>
+      <Value>$(SqlCmdVar__2)</Value>
+    </SqlCmdVariable>
+  </ItemGroup>
+</Project>

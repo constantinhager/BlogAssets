@@ -1,0 +1,5 @@
+database/bin/
+database/obj/
+infra/.terraform/
+infra/tfplan
+out/

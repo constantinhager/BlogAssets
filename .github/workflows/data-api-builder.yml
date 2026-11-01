@@ -1,0 +1,293 @@
+name: data-api-builder
+
+# Deploys the Data API builder sample without a single stored secret:
+# GitHub OIDC -> Entra ID federated credential -> Azure (Terraform, ACR, SQL, Container Apps).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Data API Builder with PowerShell/**'
+      - '.github/workflows/data-api-builder.yml'
+  pull_request:
+    paths:
+      - 'Data API Builder with PowerShell/**'
+      - '.github/workflows/data-api-builder.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # OIDC token for azure/login and Terraform
+  contents: read
+
+concurrency:
+  group: data-api-builder-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Folder of the sample in the repository. '.' if the sample is the repository root.
+  PROJECT_DIR: Data API Builder with PowerShell
+  TERRAFORM_VERSION: 1.17.1
+  DOTNET_VERSION: 10.0.x
+  SQLPACKAGE_VERSION: 170.5.96
+  DACFX_TELEMETRY_OPTOUT: 'true'
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: 'true'
+  TF_IN_AUTOMATION: 'true'
+  TF_VAR_sql_admin_group_name: ${{ vars.SQL_ADMIN_GROUP_NAME }}
+  TF_VAR_sql_admin_group_object_id: ${{ vars.SQL_ADMIN_GROUP_ID }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: PSScriptAnalyzer
+        run: |
+          Install-PSResource -Name PSScriptAnalyzer -TrustRepository -Quiet
+          $findings = Invoke-ScriptAnalyzer -Path ./scripts -Recurse -Severity Warning, Error
+          $findings | Format-Table RuleName, Severity, ScriptName, Line, Message -AutoSize -Wrap
+          if ($findings) { exit 1 }
+
+      - name: Validate dab-config.json against the DAB schema
+        run: |
+          $schemaUrl = (Get-Content ./dab/dab-config.json -Raw | ConvertFrom-Json).'$schema'
+          Invoke-WebRequest -Uri $schemaUrl -OutFile "$env:RUNNER_TEMP/dab.schema.json"
+          if (-not (Test-Json -Path ./dab/dab-config.json -SchemaFile "$env:RUNNER_TEMP/dab.schema.json")) { exit 1 }
+
+  build-database:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Validates every object against the Azure SQL model and runs the SQL code analysis.
+      # A typo in a column name fails here - not in production.
+      - name: Build the SQL database project
+        run: dotnet build ./database/MeetupDb.sqlproj --configuration Release
+
+      - uses: actions/upload-artifact@v7
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: dacpac
+          path: ${{ env.PROJECT_DIR }}/database/bin/Release/MeetupDb.dacpac
+          retention-days: 1
+
+  terraform-plan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}/infra
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: >
+          terraform init -input=false
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=tfstate"
+          -backend-config="key=data-api-builder.tfstate"
+          -backend-config="use_oidc=true"
+          -backend-config="use_azuread_auth=true"
+
+      - run: terraform fmt -check -recursive
+      - run: terraform validate
+      - run: terraform plan -input=false -var-file=production.tfvars -out=tfplan
+
+      # Nothing secret in the plan: no passwords, no keys, no connection string with credentials.
+      - uses: actions/upload-artifact@v7
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: tfplan
+          path: ${{ env.PROJECT_DIR }}/infra/tfplan
+          retention-days: 1
+
+  terraform-apply:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [validate, build-database, terraform-plan]
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PROJECT_DIR }}/infra
+    outputs:
+      resource_group_name: ${{ steps.out.outputs.resource_group_name }}
+      container_app_name: ${{ steps.out.outputs.container_app_name }}
+      acr_name: ${{ steps.out.outputs.acr_name }}
+      acr_login_server: ${{ steps.out.outputs.acr_login_server }}
+      sql_server_name: ${{ steps.out.outputs.sql_server_name }}
+      sql_server_fqdn: ${{ steps.out.outputs.sql_server_fqdn }}
+      database_name: ${{ steps.out.outputs.database_name }}
+      dab_identity_name: ${{ steps.out.outputs.dab_identity_name }}
+      dab_identity_client_id: ${{ steps.out.outputs.dab_identity_client_id }}
+      api_url: ${{ steps.out.outputs.api_url }}
+      api_client_id: ${{ steps.out.outputs.api_client_id }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: >
+          terraform init -input=false
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          -backend-config="container_name=tfstate"
+          -backend-config="key=data-api-builder.tfstate"
+          -backend-config="use_oidc=true"
+          -backend-config="use_azuread_auth=true"
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: tfplan
+          path: ${{ env.PROJECT_DIR }}/infra
+
+      - run: terraform apply -input=false tfplan
+
+      - name: Terraform outputs
+        id: out
+        shell: pwsh
+        run: |
+          $outputs = terraform output -json | ConvertFrom-Json
+          foreach ($property in $outputs.PSObject.Properties) {
+              "$($property.Name)=$($property.Value.value)" >> $env:GITHUB_OUTPUT
+          }
+
+  database:
+    needs: terraform-apply
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ env.PROJECT_DIR }}
+    env:
+      RESOURCE_GROUP: ${{ needs.terraform-apply.outputs.resource_group_name }}
+      SQL_SERVER: ${{ needs.terraform-apply.outputs.sql_server_name }}
+      RULE_NAME: github-runner-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dacpac
+          path: ${{ runner.temp }}/dacpac
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install SqlPackage
+        run: |
+          dotnet tool install --global microsoft.sqlpackage --version $env:SQLPACKAGE_VERSION
+          if ($LASTEXITCODE) { exit 1 }
+          Join-Path $HOME '.dotnet/tools' >> $env:GITHUB_PATH
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Open the SQL firewall for this runner
+        run: |
+          $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org?format=json').ip
+          az sql server firewall-rule create --resource-group $env:RESOURCE_GROUP --server $env:SQL_SERVER `
+              --name $env:RULE_NAME --start-ip-address $ip --end-ip-address $ip --output none
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Publish the dacpac (schema, DAB user, sample data)
+        run: |
+          $db = @{
+              DacpacPath          = '${{ runner.temp }}/dacpac/MeetupDb.dacpac'
+              ServerName          = '${{ needs.terraform-apply.outputs.sql_server_fqdn }}'
+              DatabaseName        = '${{ needs.terraform-apply.outputs.database_name }}'
+              DabIdentityName     = '${{ needs.terraform-apply.outputs.dab_identity_name }}'
+              DabIdentityClientId = '${{ needs.terraform-apply.outputs.dab_identity_client_id }}'
+          }
+          # First the report of what will change (in the log), then the publish.
+          ./scripts/Publish-DabDatabase.ps1 @db -Action DeployReport -OutputPath $env:RUNNER_TEMP
+          Get-Content "$env:RUNNER_TEMP/$($db.DatabaseName).deployreport.xml"
+          ./scripts/Publish-DabDatabase.ps1 @db
+
+      - name: Close the SQL firewall
+        if: always()
+        run: |
+          az sql server firewall-rule delete --resource-group $env:RESOURCE_GROUP --server $env:SQL_SERVER `
+              --name $env:RULE_NAME --output none
+
+  container:
+    needs: [terraform-apply, database]
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ env.PROJECT_DIR }}
+    env:
+      IMAGE: ${{ needs.terraform-apply.outputs.acr_login_server }}/dab-meetup-api:${{ github.sha }}
+      API_URL: ${{ needs.terraform-apply.outputs.api_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push the DAB image (Entra ID login, no admin user)
+        run: |
+          az acr login --name '${{ needs.terraform-apply.outputs.acr_name }}'
+          if ($LASTEXITCODE) { exit 1 }
+          docker build --pull --tag $env:IMAGE ./dab
+          if ($LASTEXITCODE) { exit 1 }
+          docker push $env:IMAGE
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Deploy the image to the container app
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+          az containerapp update `
+              --name '${{ needs.terraform-apply.outputs.container_app_name }}' `
+              --resource-group '${{ needs.terraform-apply.outputs.resource_group_name }}' `
+              --image $env:IMAGE --output none
+          if ($LASTEXITCODE) { exit 1 }
+
+      - name: Smoke test
+        run: |
+          # "/" is public and answers once DAB has loaded the database metadata.
+          # Until the new revision takes over, the bootstrap image answers with HTML - keep waiting.
+          $deadline = (Get-Date).AddMinutes(5)
+          do {
+              $root = Invoke-RestMethod -Uri "$env:API_URL/" -SkipHttpErrorCheck -StatusCodeVariable status
+              if ($status -eq 200 -and $root.version) { break }
+              Start-Sleep -Seconds 10
+          } while ((Get-Date) -lt $deadline)
+          if (-not $root.version) { throw 'DAB did not answer on / within 5 minutes.' }
+          "DAB $($root.version): $($root.status)"
+          # Without a token the API must refuse to return data.
+          $null = Invoke-RestMethod -Uri "$env:API_URL/api/Event" -SkipHttpErrorCheck -StatusCodeVariable status
+          "GET /api/Event without token -> $status"
+          if ($status -notin 401, 403) { throw "Anonymous access returned $status." }
