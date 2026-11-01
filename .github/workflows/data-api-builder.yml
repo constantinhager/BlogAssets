@@ -7,11 +7,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Data API Builder with PowerShell/**'
+      - 'Data API Builder With PowerShell/**'
       - '.github/workflows/data-api-builder.yml'
   pull_request:
     paths:
-      - 'Data API Builder with PowerShell/**'
+      - 'Data API Builder With PowerShell/**'
       - '.github/workflows/data-api-builder.yml'
   workflow_dispatch:
 
@@ -25,7 +25,7 @@ concurrency:
 
 env:
   # Folder of the sample in the repository. '.' if the sample is the repository root.
-  PROJECT_DIR: Data API Builder with PowerShell
+  PROJECT_DIR: Data API Builder With PowerShell
   TERRAFORM_VERSION: 1.17.1
   DOTNET_VERSION: 10.0.x
   SQLPACKAGE_VERSION: 170.5.96
