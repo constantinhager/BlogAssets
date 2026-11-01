@@ -4,7 +4,15 @@ resource "azurerm_container_app_environment" "this" {
   resource_group_name        = azurerm_resource_group.this.name
   logs_destination           = "log-analytics" # azurerm 5.x: required to use log_analytics_workspace_id
   log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
-  tags                       = var.tags
+
+  # Azure creates new environments with workload profiles and adds "Consumption" itself.
+  # Declared here, otherwise every plan tries to remove it (and Azure keeps it anyway).
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+  }
+
+  tags = var.tags
 }
 
 locals {
@@ -26,6 +34,7 @@ resource "azurerm_container_app" "dab" {
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = azurerm_resource_group.this.name
   revision_mode                = "Single"
+  workload_profile_name        = "Consumption"
 
   identity {
     type         = "UserAssigned"

@@ -132,7 +132,7 @@
           {
             "name": "Days",
             "required": false,
-            "default": 90,
+            "default": "90",
             "description": "How many days to look ahead (1-365)."
           }
         ]
