@@ -26,30 +26,73 @@
 [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'User')]
 param(
     [Parameter(Mandatory)]
-    [guid] $ApiClientId,
+    [guid]
+    $ApiClientId,
 
     [Parameter(Mandatory)]
     [ValidateSet('reader', 'writer')]
-    [string] $Role,
+    [string]
+    $Role,
 
     [Parameter(Mandatory, ParameterSetName = 'User')]
-    [string] $UserPrincipalName,
+    [string]
+    $UserPrincipalName,
 
     [Parameter(Mandatory, ParameterSetName = 'Group')]
-    [guid] $GroupObjectId,
+    [guid]
+    $GroupObjectId,
 
     [Parameter(Mandatory, ParameterSetName = 'ServicePrincipal')]
-    [guid] $ServicePrincipalObjectId
+    [guid]
+    $ServicePrincipalObjectId
 )
 
 $ErrorActionPreference = 'Stop'
 
 function Invoke-Graph {
+    <#
+        .SYNOPSIS
+        Sends an authenticated request to Microsoft Graph.
+
+        .DESCRIPTION
+        Gets a Microsoft Graph access token from the current Azure context and
+        invokes the requested Microsoft Graph v1.0 endpoint. When supplied, the
+        request body is serialized as JSON.
+
+        .PARAMETER Method
+        HTTP method to use. Defaults to GET.
+
+        .PARAMETER Path
+        Microsoft Graph API path without a leading slash, including the query string.
+
+        .PARAMETER Body
+        Optional request body, serialized to JSON before sending.
+
+        .OUTPUTS
+        System.Object
+        Returns the response from Invoke-RestMethod.
+
+        .EXAMPLE
+        Invoke-Graph -Path "servicePrincipals?`$filter=appId eq '$ApiClientId'"
+
+        .EXAMPLE
+        Invoke-Graph -Method POST -Path "servicePrincipals/$($apiSp.id)/appRoleAssignedTo" -Body $assignment
+    #>
+
     [CmdletBinding()]
+    [OutputType([System.Object])]
     param(
-        [string] $Method = 'GET',
-        [Parameter(Mandatory)][string] $Path,
-        [object] $Body
+        [Parameter()]
+        [string]
+        $Method = 'GET',
+
+        [Parameter(Mandatory)]
+        [string]
+        $Path,
+
+        [Parameter()]
+        [object]
+        $Body
     )
     $request = @{
         Method         = $Method

@@ -24,37 +24,128 @@
 #>
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
-    [string] $ResourceGroupName,
+    [Parameter(Mandatory)]
+    [string]
+    $ResourceGroupName,
 
-    [guid] $ApiClientId,
+    [Parameter(Mandatory)]
+    [guid]
+    $ApiClientId,
 
-    [switch] $RemovePipelineIdentity,
-    [string] $PipelineAppDisplayName = 'github-dab-sql-deploy',
+    [Parameter(Mandatory)]
+    [switch]
+    $RemovePipelineIdentity,
 
-    [switch] $RemoveSqlAdminGroup,
-    [string] $SqlAdminGroupName = 'sg-dab-sql-admins',
+    [Parameter(Mandatory)]
+    [string]
+    $PipelineAppDisplayName = 'github-dab-sql-deploy',
 
-    [switch] $RemoveTerraformState,
-    [string] $StateResourceGroupName = 'rg-dab-tfstate',
+    [Parameter(Mandatory)]
+    [switch]
+    $RemoveSqlAdminGroup,
 
-    [string] $GitHubOrganization,
-    [string] $GitHubRepository,
-    [string] $EnvironmentName = 'production'
+    [Parameter(Mandatory)]
+    [string]
+    $SqlAdminGroupName = 'sg-dab-sql-admins',
+
+    [Parameter(Mandatory)]
+    [switch]
+    $RemoveTerraformState,
+
+    [Parameter(Mandatory)]
+    [string]
+    $StateResourceGroupName = 'rg-dab-tfstate',
+
+    [Parameter(Mandatory)]
+    [string]
+    $GitHubOrganization,
+
+    [Parameter(Mandatory)]
+    [string]
+    $GitHubRepository,
+
+    [Parameter(Mandatory)]
+    [string]
+    $EnvironmentName = 'production'
 )
 
 $ErrorActionPreference = 'Stop'
 $removed = [System.Collections.Generic.List[string]]::new()
 
 function Invoke-Graph {
+    <#
+        .SYNOPSIS
+        Sends an authenticated request to Microsoft Graph.
+
+        .DESCRIPTION
+        Gets a Microsoft Graph access token from the current Azure context and
+        invokes the requested Microsoft Graph v1.0 endpoint.
+
+        .PARAMETER Method
+        HTTP method to use. Defaults to GET.
+
+        .PARAMETER Path
+        Microsoft Graph API path without a leading slash, including the query string.
+
+        .OUTPUTS
+        System.Object
+        Returns the response from Invoke-RestMethod.
+
+        .EXAMPLE
+        Invoke-Graph -Path "applications?`$filter=appId eq '$ApiClientId'"
+
+        .EXAMPLE
+        Invoke-Graph -Method DELETE -Path "applications/$objectId"
+    #>
+
     [CmdletBinding()]
-    param([string] $Method = 'GET', [Parameter(Mandatory)][string] $Path)
+    [OutputType([System.Object])]
+    param(
+        [Parameter()]
+        [string] $Method = 'GET',
+
+        [Parameter(Mandatory)]
+        [string]
+        $Path
+    )
     Invoke-RestMethod -Method $Method -Uri "https://graph.microsoft.com/v1.0/$Path" `
         -Authentication Bearer -Token (Get-AzAccessToken -ResourceTypeName MSGraph).Token
 }
 
 function Remove-GraphApplication {
+    <#
+        .SYNOPSIS
+        Deletes an app registration found by an OData filter.
+
+        .DESCRIPTION
+        Looks up the first application that matches the filter. Writes a verbose
+        message and returns when there is none. Otherwise asks for confirmation
+        (ConfirmImpact High) and deletes the application, which also deletes its
+        service principal and app role assignments. Adds the label and display name
+        to the list of removed items.
+
+        .PARAMETER Filter
+        OData filter for the applications endpoint, for example "appId eq '<client-id>'".
+
+        .PARAMETER Label
+        Name of the application in messages and in the list of removed items.
+
+        .EXAMPLE
+        Remove-GraphApplication -Filter "appId eq '$ApiClientId'" -Label 'API app'
+
+        .EXAMPLE
+        Remove-GraphApplication -Filter "displayName eq 'github-dab'" -Label 'Pipeline app' -WhatIf
+    #>
+
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
-    param([Parameter(Mandatory)][string] $Filter, [Parameter(Mandatory)][string] $Label)
+    param(
+        [Parameter(Mandatory)]
+        [string] $Filter,
+
+        [Parameter(Mandatory)]
+        [string] $Label
+    )
+    
     $app = (Invoke-Graph -Path "applications?`$filter=$Filter&`$select=id,appId,displayName").value | Select-Object -First 1
     if (-not $app) { Write-Verbose "$Label not found."; return }
     if ($PSCmdlet.ShouldProcess("$($app.displayName) ($($app.appId))", "Delete app registration ($Label)")) {

@@ -68,6 +68,25 @@ if (-not (Get-Command sqlpackage -ErrorAction SilentlyContinue)) {
 }
 
 function Get-SqlAccessToken {
+    <#
+        .SYNOPSIS
+        Gets an access token for Azure SQL Database.
+
+        .DESCRIPTION
+        Requests a token for https://database.windows.net/ from the Azure CLI first,
+        then from Az.Accounts. Throws when neither is signed in.
+
+        .OUTPUTS
+        System.Security.SecureString
+        Returns the access token.
+
+        .EXAMPLE
+        $AccessToken = Get-SqlAccessToken
+    #>
+
+    [OutputType([System.Security.SecureString])]
+    param()
+
     $resource = 'https://database.windows.net/'
     if (Get-Command az -ErrorAction SilentlyContinue) {
         $plain = az account get-access-token --resource $resource --query accessToken --output tsv 2>$null

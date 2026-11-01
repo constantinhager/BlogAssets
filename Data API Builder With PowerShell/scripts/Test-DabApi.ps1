@@ -14,6 +14,21 @@
     5. With -IncludeWrite: creates, changes and deletes a session as 'writer'.
        Needs the app role 'writer' (scripts/Grant-DabApiRole.ps1).
 
+.PARAMETER ApiUrl
+    Base URI of the Data API Builder endpoint, for example https://api.example.com.
+
+.PARAMETER ApiClientId
+    Client/application ID of the API registration. It is used to request a token
+    for the api://<ApiClientId> audience.
+
+.PARAMETER TenantId
+    Optional Microsoft Entra tenant ID passed to Get-AzAccessToken. If omitted,
+    the current Az.Accounts context is used.
+
+.PARAMETER IncludeWrite
+    Also test creating, updating, and deleting a session. Requires a token with
+    the 'writer' app role. The session created by the script is deleted afterward.
+
 .EXAMPLE
     Connect-AzAccount -Tenant <tenant-id>
     $test = @{
@@ -21,30 +36,93 @@
         ApiClientId = (terraform -chdir=infra output -raw api_client_id)
     }
     ./scripts/Test-DabApi.ps1 @test -IncludeWrite
+
+.EXAMPLE
+    ./scripts/Test-DabApi.ps1 -ApiUrl 'https://api.example.com' `
+        -ApiClientId '00000000-0000-0000-0000-000000000000' `
+        -TenantId '11111111-1111-1111-1111-111111111111'
+    Runs the API checks using the specified endpoint, application ID, and tenant.
+
+.NOTES
+    Requires PowerShell 7.4 and the Az.Accounts module. Sign in with
+    Connect-AzAccount before running. The API must expose the endpoints and roles
+    exercised by this demo. Use Get-Help ./scripts/Test-DabApi.ps1 -Full for details.
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Interactive demo output.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'ApiUrl is used in the helper functions.')]
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [uri] $ApiUrl,
+    [uri]
+    $ApiUrl,
 
     [Parameter(Mandatory)]
-    [guid] $ApiClientId,
+    [guid]
+    $ApiClientId,
 
-    [string] $TenantId,
+    [Parameter()]
+    [string]
+    $TenantId,
 
-    [switch] $IncludeWrite
+    [Parameter()]
+    [switch]
+    $IncludeWrite
 )
 
 $ErrorActionPreference = 'Stop'
 
 #region Helpers
-function Write-Step([string] $Text) { Write-Host "`n== $Text" -ForegroundColor Cyan }
+function Write-Step {
+    <#
+        .SYNOPSIS
+        Writes a section heading to the console.
+
+        .DESCRIPTION
+        Writes an empty line and the text, prefixed with "==", in cyan. Separates the
+        steps of the demo in the console output.
+
+        .PARAMETER Text
+        The heading to write.
+
+        .EXAMPLE
+        Write-Step 'Token'
+    #>
+
+    param(
+        [Parameter()]
+        [string]
+        $Text
+    )
+    Write-Host "`n== $Text" -ForegroundColor Cyan
+}
 
 function ConvertFrom-Jwt {
-    # Decodes the payload of a JWT. No validation - that's DAB's job.
-    param([Parameter(Mandatory)][securestring] $Token)
+    <#
+        .SYNOPSIS
+        Decodes the payload of a JSON Web Token.
+
+        .DESCRIPTION
+        Takes the second segment of the token, converts it from Base64url to Base64,
+        adds the missing padding and returns the claims as an object. The signature
+        is not validated - that's DAB's job.
+
+        .PARAMETER Token
+        The access token as SecureString, as Get-AzAccessToken returns it.
+
+        .OUTPUTS
+        System.Management.Automation.PSCustomObject
+        Returns the claims of the token (aud, iss, scp, roles, ...).
+
+        .EXAMPLE
+        ConvertFrom-Jwt -Token (Get-AzAccessToken -ResourceUrl "api://$ApiClientId").Token
+    #>
+
+    [OutputType([System.Management.Automation.PSCustomObject])]
+    param(
+        [Parameter(Mandatory)]
+        [securestring]
+        $Token
+    )
     $payload = (ConvertFrom-SecureString -SecureString $Token -AsPlainText).Split('.')[1].Replace('-', '+').Replace('_', '/')
     $payload = $payload.PadRight($payload.Length + (4 - $payload.Length % 4) % 4, '=')
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
@@ -52,16 +130,79 @@ function ConvertFrom-Jwt {
 
 function Invoke-Dab {
     <#
-        One wrapper for every call: bearer token, optional role header, JSON body, retries.
-        -Anonymous sends no token. -ExpectStatus returns the status code instead of throwing.
+        .SYNOPSIS
+        Sends a request to the Data API builder endpoint.
+
+        .DESCRIPTION
+        Combines ApiUrl and the path, sends the access token from the Token step as
+        bearer token and, when supplied, the role in the X-MS-API-ROLE header and the
+        body as JSON.
+
+        Without ExpectStatus, a failed request throws. Up to four retries cover the
+        cold start of a container app that scaled to zero.
+        With ExpectStatus, HTTP errors do not throw. The function compares the status
+        code with the expected values, throws on a mismatch and returns the status code.
+
+        .PARAMETER Path
+        Path relative to ApiUrl, including the query string, for example '/api/Event'.
+
+        .PARAMETER Method
+        HTTP method to use. Valid values are GET, POST, PUT, PATCH, and DELETE.
+
+        .PARAMETER Body
+        Optional request body, serialized to JSON before sending.
+
+        .PARAMETER Role
+        Role DAB evaluates the request with (X-MS-API-ROLE header). Must be an app role
+        in the token. Without it, DAB uses the role authenticated.
+
+        .PARAMETER Anonymous
+        Sends the request without a token.
+
+        .PARAMETER ExpectStatus
+        One or more expected HTTP status codes. Returns the status code instead of the
+        response body.
+
+        .OUTPUTS
+        System.Object
+        Returns the response from Invoke-RestMethod, or the status code with ExpectStatus.
+
+        .EXAMPLE
+        (Invoke-Dab -Path '/api/Event').value
+
+        .EXAMPLE
+        Invoke-Dab -Path '/api/Event' -Anonymous -ExpectStatus 401, 403
+
+        .EXAMPLE
+        Invoke-Dab -Path '/api/Session' -Method POST -Role writer -Body $newSession
     #>
+
+    [OutputType([System.Object])]
     param(
-        [Parameter(Mandatory)][string] $Path,
-        [ValidateSet('GET', 'POST', 'PUT', 'PATCH', 'DELETE')][string] $Method = 'GET',
-        [object] $Body,
-        [string] $Role,
-        [switch] $Anonymous,
-        [int[]] $ExpectStatus
+        [Parameter(Mandatory)]
+        [string]
+        $Path,
+
+        [Parameter()]
+        [ValidateSet('GET', 'POST', 'PUT', 'PATCH', 'DELETE')]
+        [string]
+        $Method = 'GET',
+
+        [Parameter()]
+        [object]
+        $Body,
+
+        [Parameter()]
+        [string]
+        $Role,
+
+        [Parameter()]
+        [switch]
+        $Anonymous,
+
+        [Parameter()]
+        [int[]]
+        $ExpectStatus
     )
     $request = @{
         Uri         = [uri]::new($ApiUrl, $Path)
@@ -88,8 +229,33 @@ function Invoke-Dab {
 }
 
 function Get-DabPage {
-    # Follows nextLink until all rows are read. DAB returns relative links (next-link-relative).
-    param([Parameter(Mandatory)][string] $Path)
+    <#
+        .SYNOPSIS
+        Reads all rows of a paged REST request.
+
+        .DESCRIPTION
+        Calls Invoke-Dab and follows nextLink until all rows are read. Writes the rows
+        of every page to the pipeline. DAB returns relative links (next-link-relative),
+        so every page goes to the same ApiUrl.
+
+        .PARAMETER Path
+        Path of the first page relative to ApiUrl, including the query string.
+
+        .OUTPUTS
+        System.Management.Automation.PSCustomObject
+        Returns one object per row.
+
+        .EXAMPLE
+        Get-DabPage -Path '/api/Event?$orderby=EventDate&$first=2'
+    #>
+
+    [OutputType([System.Management.Automation.PSCustomObject])]
+    param(
+        [Parameter(Mandatory)]
+        [string]
+        $Path
+    )
+
     while ($Path) {
         $page = Invoke-Dab -Path $Path
         $page.value
@@ -98,6 +264,36 @@ function Get-DabPage {
 }
 
 function Invoke-DabGraphQL {
+    <#
+        .SYNOPSIS
+        Sends a GraphQL query or mutation to the Data API builder endpoint.
+
+        .DESCRIPTION
+        Posts the query and its variables to /graphql with Invoke-Dab. GraphQL answers
+        errors with HTTP 200, so the function throws when the response contains errors
+        and returns the data otherwise.
+
+        .PARAMETER Query
+        The GraphQL query or mutation.
+
+        .PARAMETER Variables
+        Values for the variables the query declares.
+
+        .PARAMETER Role
+        Role DAB evaluates the request with (X-MS-API-ROLE header).
+
+        .OUTPUTS
+        System.Management.Automation.PSCustomObject
+        Returns the data property of the response.
+
+        .EXAMPLE
+        Invoke-DabGraphQL -Query 'query { executeUpcomingEvents(Days: 30) { Title } }'
+
+        .EXAMPLE
+        Invoke-DabGraphQL -Role writer -Query $mutation -Variables @{ id = 1; item = @{ Title = 'New title' } }
+    #>
+
+    [OutputType([System.Management.Automation.PSCustomObject])]
     param(
         [Parameter(Mandatory)][string] $Query,
         [hashtable] $Variables = @{},
